@@ -1,27 +1,41 @@
 import uuid
 
+import pytest
 from sqlalchemy import select
 
-from app.db.models import AuditLog
+from app.db.models import Alert, AlertSeverity, AuditLog
 from tests.conftest import ADMIN, OFFICER, VERIFIER, auth_header
 
 
-def test_list_alerts(client, tokens):
-    res = client.get("/api/alerts", headers=auth_header(tokens, OFFICER))
-    assert res.status_code == 200
-    items = res.json()["items"]
-    assert len(items) == 2 and all(a["is_demo"] for a in items)
+@pytest.fixture()
+def alert(db, world):
+    a = Alert(kind="processing_done", severity=AlertSeverity.info, message="Test alert", survey_id=uuid.UUID(world["new"]["id"]))
+    db.add(a)
+    db.commit()
+    return a
 
 
-def test_mark_alert_read_is_audited(client, tokens, db):
+def test_list_alerts(client, tokens, alert):
+    items = client.get("/api/alerts", headers=auth_header(tokens, OFFICER)).json()["items"]
+    assert any(a["id"] == str(alert.id) and a["is_demo"] is False for a in items)
+
+
+def test_alert_scope(client, tokens, db, world):
+    other = Alert(kind="x", severity=AlertSeverity.info, message="Nashik only", survey_id=uuid.UUID(world["nashik"]))
+    db.add(other)
+    db.commit()
+    ids = [a["id"] for a in client.get("/api/alerts?page_size=200", headers=auth_header(tokens, OFFICER)).json()["items"]]
+    assert str(other.id) not in ids
+
+
+def test_mark_alert_read_is_audited(client, tokens, db, alert):
     h = auth_header(tokens, ADMIN)
-    alert = client.get("/api/alerts?unread=true", headers=h).json()["items"][0]
-    res = client.patch(f"/api/alerts/{alert['id']}", headers=h, json={"read": True})
+    res = client.patch(f"/api/alerts/{alert.id}", headers=h, json={"read": True})
     assert res.status_code == 200 and res.json()["read"] is True
-    assert all(a["id"] != alert["id"] for a in client.get("/api/alerts?unread=true", headers=h).json()["items"])
-    row = db.scalar(select(AuditLog).where(AuditLog.entity == "alert", AuditLog.entity_id == alert["id"]))
+    unread = [a["id"] for a in client.get("/api/alerts?unread=true&page_size=200", headers=h).json()["items"]]
+    assert str(alert.id) not in unread
+    row = db.scalar(select(AuditLog).where(AuditLog.entity == "alert", AuditLog.entity_id == str(alert.id)))
     assert row.before_json["read"] is False and row.after_json["read"] is True
-    client.patch(f"/api/alerts/{alert['id']}", headers=h, json={"read": False})
 
 
 def test_alerts_permissions(client, tokens):

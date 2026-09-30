@@ -15,7 +15,7 @@ from app.db.models import District, Role, Survey, Taluka, User, Village
 from app.db.session import get_db
 from app.services.geo import bbox, to_geojson
 from app.services.scope import scope_surveys
-from app.services.stats import aggregate
+from app.services.stats import aggregate, is_empty
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -31,7 +31,8 @@ class Level(str, Enum):
 _HIERARCHY = {
     Level.state: (None, None, Level.district, District, None),
     Level.district: (District, Survey.district_id, Level.taluka, Taluka, Taluka.district_id),
-    Level.taluka: (Taluka, Survey.taluka_id, Level.village, Village, Village.taluka_id),
+    # No village boundaries are loaded (no open source); taluka children are its surveys.
+    Level.taluka: (Taluka, Survey.taluka_id, None, None, None),
     Level.village: (Village, Survey.village_id, None, None, None),
 }
 _SURVEY_COL = {Level.district: Survey.district_id, Level.taluka: Survey.taluka_id, Level.village: Survey.village_id}
@@ -83,6 +84,7 @@ def summary(
         stmt = stmt.where(survey_col == unit.id)
     surveys = list(db.scalars(stmt).all())
     result = aggregate(db, surveys)
+    result["empty"] = is_empty(result)
 
     children: list[dict[str, Any]] = []
     if child_model is not None:
@@ -103,7 +105,7 @@ def summary(
                     "is_demo": child.is_demo,
                     "surveys": len(child_surveys),
                     "surveyed_area_ha": agg["cards"]["total_surveyed_area_ha"] if agg else 0.0,
-                    "fields_analysed": agg["cards"]["fields_analysed"] if agg else 0,
+                    "plots_mapped": agg["cards"]["plots_mapped"] if agg else 0,
                     "healthy_pct": agg["cards"]["healthy_pct"] if agg else None,
                     "contains_demo": agg["contains_demo"] if agg else False,
                     "bbox": bbox(child.geom),
@@ -111,12 +113,12 @@ def summary(
                 }
             )
     else:
-        # Village level: surveys are the children.
+        # Taluka / village level: surveys are the children.
         for s in sorted(surveys, key=lambda s: (s.survey_date is None, s.survey_date), reverse=True):
             children.append(
                 {"id": str(s.id), "name": s.name, "level": "survey", "is_demo": s.is_demo,
                  "survey_date": s.survey_date.isoformat() if s.survey_date else None,
-                 "status": s.status.value, "bbox": bbox(s.aoi)}
+                 "status": s.status.value, "bbox": bbox(s.aoi), "aoi_area_ha": s.aoi_area_ha}
             )
 
     result.update(

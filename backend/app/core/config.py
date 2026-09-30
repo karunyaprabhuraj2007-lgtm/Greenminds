@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
 
     redis_url: str = "redis://localhost:6379/0"
+    # Run background jobs in the request process (tests / no Redis).
+    jobs_inline: bool = False
 
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "greenminds"
@@ -67,6 +69,8 @@ class Settings(BaseSettings):
     # Map basemaps (any XYZ raster tile URL). Satellite context is optional.
     basemap_tiles_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
     basemap_attribution: str = "© OpenStreetMap contributors"
+    basemap_dark_tiles_url: str = "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+    basemap_dark_attribution: str = "© OpenStreetMap contributors © CARTO"
     satellite_tiles_url: str = ""
     satellite_attribution: str = ""
     demo_mode: bool = True

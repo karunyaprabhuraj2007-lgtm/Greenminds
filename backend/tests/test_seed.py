@@ -1,45 +1,41 @@
 from sqlalchemy import func, select
 
-from app.db.models import Alert, District, Plot, PlotAIResult, Raster, Survey, User
-from app.seed.seed_demo import DEMO_ALERTS, SURVEYS, seed
+from app.db.models import Alert, Dataset, District, Plot, PlotAIResult, Raster, Survey, Taluka, User, Village
+from app.seed.seed import seed
 
-SEEDED_NAMES = [name for name, *_ in SURVEYS]
+
+def _counts(db):
+    return {m.__name__: db.scalar(select(func.count()).select_from(m)) for m in (Dataset, District, Taluka, Village, User)}
 
 
 def test_seed_is_idempotent(db):
-    before = {m.__name__: db.scalar(select(func.count()).select_from(m)) for m in (District, Survey, Plot, PlotAIResult, Raster, Alert)}
+    before = _counts(db)
     seed(db)
-    after = {m.__name__: db.scalar(select(func.count()).select_from(m)) for m in (District, Survey, Plot, PlotAIResult, Raster, Alert)}
-    assert before == after
+    assert _counts(db) == before
 
 
-def test_all_seeded_records_flagged_demo(db):
-    surveys = db.scalars(select(Survey).where(Survey.name.in_(SEEDED_NAMES))).all()
-    assert len(surveys) == 2 and all(s.is_demo for s in surveys)
-    ids = [s.id for s in surveys]
-    assert db.scalar(select(func.count()).select_from(Plot).where(Plot.survey_id.in_(ids), Plot.is_demo.is_(False))) == 0
-    assert db.scalar(
-        select(func.count()).select_from(PlotAIResult).where(PlotAIResult.survey_id.in_(ids), PlotAIResult.is_demo.is_(False))
-    ) == 0
-    rasters = db.scalars(select(Raster).where(Raster.survey_id.in_(ids))).all()
-    assert len(rasters) == 2 and all(r.is_demo and not r.calibrated for r in rasters)
-    seeded_kinds = [kind for kind, *_ in DEMO_ALERTS]
-    alerts = db.scalars(select(Alert).where(Alert.survey_id.in_(ids), Alert.kind.in_(seeded_kinds))).all()
-    assert alerts and all(a.is_demo for a in alerts)
+def test_real_boundaries_with_provenance(db):
+    assert db.scalar(select(func.count()).select_from(District)) == 36
+    assert db.scalar(select(func.count()).select_from(Taluka)) == 357
+    pune = db.scalar(select(District).where(District.name == "Pune"))
+    ds = db.get(Dataset, pune.dataset_id)
+    assert ds.provider == "geoBoundaries (gbOpen)"
+    assert "Open Database License" in ds.licence
+    assert "geoBoundaries" in ds.attribution and ds.version
+    assert pune.source_id and not pune.is_demo
+    assert db.scalar(select(func.count()).select_from(District).where(District.is_demo.is_(True))) == 0
+
+
+def test_seed_creates_no_survey_data(db):
+    """The seed loads boundaries and demo accounts only: no invented surveys, plots, results or alerts."""
+    fresh = db.scalar(select(func.count()).select_from(Survey).where(Survey.is_demo.is_(True)))
+    assert fresh == 0
+    for model in (Plot, PlotAIResult, Raster, Alert):
+        assert db.scalar(select(func.count()).select_from(model).where(model.is_demo.is_(True))) == 0
+
+
+def test_demo_accounts_only(db):
     demo_users = db.scalars(select(User).where(User.email.like("%@greenminds.demo"))).all()
     assert len(demo_users) == 4 and all(u.is_demo for u in demo_users)
-
-
-def test_two_dated_surveys_share_plot_codes(db):
-    surveys = db.scalars(select(Survey).where(Survey.name.in_(SEEDED_NAMES)).order_by(Survey.survey_date)).all()
-    assert len(surveys) == 2 and surveys[0].survey_date < surveys[1].survey_date
-    codes = [
-        set(db.scalars(select(Plot.plot_code).where(Plot.survey_id == s.id)).all()) for s in surveys
-    ]
-    assert codes[0] == codes[1] and len(codes[0]) == 12
-
-
-def test_seeded_plot_area_matches_geometry(db):
-    plot = db.scalar(select(Plot).where(Plot.plot_code == "MLG-001"))
-    # 150 m x 130 m plot
-    assert plot.area_ha == 1.95
+    officer = next(u for u in demo_users if u.email.startswith("officer"))
+    assert db.get(District, officer.district_id).name == "Pune"

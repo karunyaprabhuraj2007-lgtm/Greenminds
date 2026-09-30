@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.db.models import AuditLog, District, Taluka, Village
+from app.db.models import AuditLog, District, Taluka
 from app.services.geo import offset_lonlat
 from tests.conftest import ADMIN, OFFICER, OPERATOR, VERIFIER, auth_header
 
@@ -18,7 +18,6 @@ def units(db):
         "nashik": db.scalar(select(District).where(District.name == "Nashik")),
         "baramati": db.scalar(select(Taluka).where(Taluka.name == "Baramati")),
         "indapur": db.scalar(select(Taluka).where(Taluka.name == "Indapur")),
-        "malegaon": db.scalar(select(Village).where(Village.name == "Malegaon Bk (demo)")),
     }
 
 
@@ -28,8 +27,7 @@ def _body(units, **kw):
         "type": "crop_health",
         "district_id": str(units["pune"].id),
         "taluka_id": str(units["baramati"].id),
-        "village_id": str(units["malegaon"].id),
-        "aoi": square(74.53, 18.14, 100),
+        "aoi": square(74.4521, 18.2194, 100),
         "survey_date": "2026-10-05",
         "season": "Rabi 2026",
     }
@@ -43,7 +41,7 @@ def test_create_survey_computes_area_and_is_audited(client, tokens, units, db):
     s = res.json()
     assert s["status"] == "draft" and s["is_demo"] is False
     assert s["aoi_area_ha"] == pytest.approx(1.0, rel=2e-3)  # 100 m x 100 m
-    assert s["village_name"] == "Malegaon Bk (demo)" and s["warnings"] == []
+    assert s["taluka_name"] == "Baramati" and s["village_name"] is None and s["warnings"] == []
     row = db.scalar(select(AuditLog).where(AuditLog.entity == "survey", AuditLog.entity_id == s["id"]))
     assert row.action == "create"
     # Operator owns it, so it shows up in their list.
@@ -51,10 +49,11 @@ def test_create_survey_computes_area_and_is_audited(client, tokens, units, db):
     assert s["id"] in names
 
 
-def test_aoi_outside_village_gives_warning(client, tokens, units):
-    res = client.post("/api/surveys", json=_body(units, aoi=square(74.70, 18.20, 200)), headers=auth_header(tokens, OFFICER))
+def test_aoi_outside_taluka_gives_warning(client, tokens, units):
+    # A field in Indapur taluka filed under Baramati.
+    res = client.post("/api/surveys", json=_body(units, aoi=square(75.02, 18.12, 200)), headers=auth_header(tokens, OFFICER))
     assert res.status_code == 201
-    assert "not fully inside the selected village" in res.json()["warnings"][0]
+    assert "not fully inside the selected taluka" in res.json()["warnings"][0]
 
 
 def test_invalid_aoi_rejected(client, tokens, units):
@@ -62,7 +61,7 @@ def test_invalid_aoi_rejected(client, tokens, units):
     bowtie = {"type": "Polygon", "coordinates": [[[74.5, 18.1], [74.51, 18.11], [74.51, 18.1], [74.5, 18.11], [74.5, 18.1]]]}
     assert client.post("/api/surveys", json=_body(units, aoi=bowtie), headers=h).status_code == 422
     assert client.post("/api/surveys", json=_body(units, aoi={"type": "Point", "coordinates": [74.5, 18.1]}), headers=h).status_code == 422
-    huge = square(74.53, 18.14, 6000)  # 3600 ha > 2000 ha limit
+    huge = square(74.4521, 18.2194, 6000)  # 3600 ha > 2000 ha limit
     res = client.post("/api/surveys", json=_body(units, aoi=huge), headers=h)
     assert res.status_code == 422 and "maximum" in res.json()["error"]["message"]
 
@@ -71,7 +70,9 @@ def test_unit_hierarchy_validated(client, tokens, units):
     h = auth_header(tokens, ADMIN)
     bad_taluka = _body(units, district_id=str(units["nashik"].id))
     assert client.post("/api/surveys", json=bad_taluka, headers=h).status_code == 400
-    bad_village = _body(units, taluka_id=str(units["indapur"].id))
+    import uuid
+
+    bad_village = _body(units, village_id=str(uuid.uuid4()))
     assert client.post("/api/surveys", json=bad_village, headers=h).status_code == 400
 
 
@@ -88,7 +89,7 @@ def test_verifier_cannot_create(client, tokens, units):
 def test_update_survey_and_aoi(client, tokens, units, db):
     h = auth_header(tokens, OFFICER)
     sid = client.post("/api/surveys", json=_body(units), headers=h).json()["id"]
-    res = client.patch(f"/api/surveys/{sid}", json={"name": "Renamed", "aoi": square(74.53, 18.14, 200)}, headers=h)
+    res = client.patch(f"/api/surveys/{sid}", json={"name": "Renamed", "aoi": square(74.4521, 18.2194, 200)}, headers=h)
     assert res.status_code == 200
     assert res.json()["name"] == "Renamed"
     assert res.json()["aoi_area_ha"] == pytest.approx(4.0, rel=2e-3)
@@ -97,15 +98,17 @@ def test_update_survey_and_aoi(client, tokens, units, db):
     assert rows[1].before_json["aoi_area_ha"] == pytest.approx(1.0, rel=2e-3)
 
 
-def test_flown_survey_aoi_is_frozen_and_status_rules(client, tokens):
+def test_flown_survey_aoi_is_frozen_and_status_rules(client, tokens, units, db):
+    from app.db.models import Survey, SurveyStatus
+
     h = auth_header(tokens, ADMIN)
-    demo = client.get("/api/surveys", headers=h).json()["items"]
-    processed = next(s for s in demo if s["status"] == "processed")
-    res = client.patch(f"/api/surveys/{processed['id']}", json={"aoi": square(74.53, 18.14, 100)}, headers=h)
-    assert res.status_code == 409
-    assert client.patch(f"/api/surveys/{processed['id']}", json={"status": "processing"}, headers=h).status_code == 400
-    # Notes can still be edited on a processed survey.
-    assert client.patch(f"/api/surveys/{processed['id']}", json={"notes": processed["notes"]}, headers=h).status_code == 200
+    sid = client.post("/api/surveys", json=_body(units), headers=h).json()["id"]
+    survey = db.get(Survey, __import__("uuid").UUID(sid))
+    survey.status = SurveyStatus.uploaded  # the aircraft has flown
+    db.commit()
+    assert client.patch(f"/api/surveys/{sid}", json={"aoi": square(74.4521, 18.2194, 150)}, headers=h).status_code == 409
+    assert client.patch(f"/api/surveys/{sid}", json={"status": "processing"}, headers=h).status_code == 400
+    assert client.patch(f"/api/surveys/{sid}", json={"notes": "flown on schedule"}, headers=h).status_code == 200
 
 
 def test_archive_survey(client, tokens, units):
@@ -115,6 +118,6 @@ def test_archive_survey(client, tokens, units):
     assert res.status_code == 200 and res.json()["status"] == "archived"
 
 
-def test_update_not_visible_is_404(client, tokens, nashik_survey):
-    res = client.patch(f"/api/surveys/{nashik_survey}", json={"name": "x"}, headers=auth_header(tokens, OFFICER))
+def test_update_not_visible_is_404(client, tokens, world):
+    res = client.patch(f"/api/surveys/{world['nashik']}", json={"name": "x"}, headers=auth_header(tokens, OFFICER))
     assert res.status_code == 404

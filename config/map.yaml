@@ -4,9 +4,10 @@ crops: [sugarcane, soybean, cotton, jowar, onion, tur]
 
 # Raster styles, passed to the tile server (TiTiler-compatible query params).
 raster_styles:
-  ndvi:  {rescale: [0.0, 1.0], colormap_name: greens, legend: "NDVI (0 = bare soil, 1 = dense vegetation)"}
-  gndvi: {rescale: [0.0, 1.0], colormap_name: greens, legend: "GNDVI"}
-  ndre:  {rescale: [0.0, 0.6], colormap_name: greens, legend: "NDRE"}
+  # YlGn: single-hue-family sequential ramp, readable with colour-vision deficiency.
+  ndvi:  {rescale: [0.0, 0.9], colormap_name: ylgn, legend: "NDVI (0 = bare soil / water, 0.9 = dense vegetation)"}
+  gndvi: {rescale: [0.0, 0.9], colormap_name: ylgn, legend: "GNDVI"}
+  ndre:  {rescale: [0.0, 0.6], colormap_name: ylgn, legend: "NDRE"}
   stress: {rescale: [0.0, 1.0], colormap_name: oranges, legend: "Stress fraction"}
   damage: {rescale: [0.0, 1.0], colormap_name: reds, legend: "Damage fraction"}
   dsm:   {rescale: [500.0, 700.0], colormap_name: gray, legend: "Surface elevation (m)"}

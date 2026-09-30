@@ -254,6 +254,8 @@ def survey_plots(survey_id: uuid.UUID, db: Session = Depends(get_db), user: User
             "id": str(p.id),
             "plot_code": p.plot_code,
             "area_ha": p.area_ha,
+            "parcel_ref": p.parcel_ref,
+            "source": p.source,
             "is_candidate": p.is_candidate,
             "is_demo": p.is_demo,
             "verification_status": verification_status(ver.get(p.id)),
@@ -279,6 +281,11 @@ class RasterOut(BaseModel):
     colormap_name: str | None
     is_demo: bool
     calibrated: bool
+    source: str | None = None
+    scene_id: str | None = None
+    acquired_at: datetime | None = None
+    cloud_cover: float | None = None
+    attribution: str | None = None
 
 
 def tiles_url_for(r: Raster) -> str | None:
@@ -309,7 +316,8 @@ def survey_rasters(survey_id: uuid.UUID, db: Session = Depends(get_db), user: Us
                 bounds=list(to_shapely(r.bounds).bounds) if r.bounds is not None else None,
                 gsd_cm=r.gsd_cm, stats=r.stats_json, legend=style.get("legend"),
                 rescale=style.get("rescale"), colormap_name=style.get("colormap_name"),
-                is_demo=r.is_demo, calibrated=r.calibrated,
+                is_demo=r.is_demo, calibrated=r.calibrated, source=r.source, scene_id=r.scene_id,
+                acquired_at=r.acquired_at, cloud_cover=r.cloud_cover, attribution=r.attribution,
             )
         )
     return out
@@ -318,6 +326,6 @@ def survey_rasters(survey_id: uuid.UUID, db: Session = Depends(get_db), user: Us
 @router.get("/{survey_id}/stats")
 def survey_stats(survey_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
     survey = require_survey(db, user, survey_id)
-    stats = aggregate(db, [survey], current_only=False)
+    stats = aggregate(db, [survey])
     stats["survey_id"] = str(survey.id)
     return stats

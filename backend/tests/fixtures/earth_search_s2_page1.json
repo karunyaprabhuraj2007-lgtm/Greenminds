@@ -1,0 +1,209 @@
+{
+ "type": "FeatureCollection",
+ "context": {
+  "limit": 2,
+  "matched": 3,
+  "returned": 2
+ },
+ "features": [
+  {
+   "type": "Feature",
+   "stac_version": "1.0.0",
+   "id": "S2B_43QDA_20260825_0_L2A",
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    74.0,
+    17.9,
+    75.0,
+    18.9
+   ],
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       74.0,
+       17.9
+      ],
+      [
+       75.0,
+       17.9
+      ],
+      [
+       75.0,
+       18.9
+      ],
+      [
+       74.0,
+       18.9
+      ],
+      [
+       74.0,
+       17.9
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "datetime": "2026-08-25T05:32:10.113000Z",
+    "platform": "sentinel-2b",
+    "constellation": "sentinel-2",
+    "eo:cloud_cover": 64.2,
+    "s2:processing_baseline": "05.10",
+    "mgrs:utm_zone": 43,
+    "mgrs:latitude_band": "Q",
+    "mgrs:grid_square": "DA",
+    "proj:epsg": 32643
+   },
+   "assets": {
+    "red": {
+     "href": "{DATA}/S2B_43QDA_20260825_0_L2A_B04.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "raster:bands": [
+      {
+       "nodata": 0,
+       "data_type": "uint16",
+       "spatial_resolution": 10,
+       "scale": 0.0001,
+       "offset": -0.1
+      }
+     ]
+    },
+    "nir": {
+     "href": "{DATA}/S2B_43QDA_20260825_0_L2A_B08.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "raster:bands": [
+      {
+       "nodata": 0,
+       "data_type": "uint16",
+       "spatial_resolution": 10,
+       "scale": 0.0001,
+       "offset": -0.1
+      }
+     ]
+    },
+    "scl": {
+     "href": "{DATA}/S2B_43QDA_20260825_0_L2A_SCL.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "raster:bands": [
+      {
+       "nodata": 0,
+       "data_type": "uint8",
+       "spatial_resolution": 20
+      }
+     ]
+    },
+    "thumbnail": {
+     "href": "{DATA}/S2B_43QDA_20260825_0_L2A_thumb.jpg",
+     "type": "image/jpeg"
+    }
+   },
+   "links": []
+  },
+  {
+   "type": "Feature",
+   "stac_version": "1.0.0",
+   "id": "S2A_43QDA_20260720_0_L2A",
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    74.0,
+    17.9,
+    75.0,
+    18.9
+   ],
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       74.0,
+       17.9
+      ],
+      [
+       75.0,
+       17.9
+      ],
+      [
+       75.0,
+       18.9
+      ],
+      [
+       74.0,
+       18.9
+      ],
+      [
+       74.0,
+       17.9
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "datetime": "2026-07-20T05:32:14.905000Z",
+    "platform": "sentinel-2a",
+    "constellation": "sentinel-2",
+    "eo:cloud_cover": 31.7,
+    "s2:processing_baseline": "05.10",
+    "mgrs:utm_zone": 43,
+    "mgrs:latitude_band": "Q",
+    "mgrs:grid_square": "DA",
+    "proj:epsg": 32643
+   },
+   "assets": {
+    "red": {
+     "href": "{DATA}/S2A_43QDA_20260720_0_L2A_B04.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "raster:bands": [
+      {
+       "nodata": 0,
+       "data_type": "uint16",
+       "spatial_resolution": 10,
+       "scale": 0.0001,
+       "offset": -0.1
+      }
+     ]
+    },
+    "nir": {
+     "href": "{DATA}/S2A_43QDA_20260720_0_L2A_B08.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "raster:bands": [
+      {
+       "nodata": 0,
+       "data_type": "uint16",
+       "spatial_resolution": 10,
+       "scale": 0.0001,
+       "offset": -0.1
+      }
+     ]
+    },
+    "scl": {
+     "href": "{DATA}/S2A_43QDA_20260720_0_L2A_SCL.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "raster:bands": [
+      {
+       "nodata": 0,
+       "data_type": "uint8",
+       "spatial_resolution": 20
+      }
+     ]
+    },
+    "thumbnail": {
+     "href": "{DATA}/S2A_43QDA_20260720_0_L2A_thumb.jpg",
+     "type": "image/jpeg"
+    }
+   },
+   "links": []
+  }
+ ],
+ "links": [
+  {
+   "rel": "next",
+   "href": "https://earth-search.aws.element84.com/v1/search",
+   "method": "POST",
+   "body": {
+    "next": "page-2-token"
+   },
+   "merge": true
+  }
+ ]
+}

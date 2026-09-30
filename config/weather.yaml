@@ -1,0 +1,10 @@
+# Open-Meteo daily weather for the survey AOI centroid (no key needed).
+archive_url: https://archive-api.open-meteo.com/v1/archive
+forecast_url: https://api.open-meteo.com/v1/forecast
+history_days: 90
+forecast_days: 7
+archive_lag_days: 6            # the archive trails real time; recent days come from the forecast API
+timezone: Asia/Kolkata
+min_refresh_interval_hours: 6
+attribution: "Weather data by Open-Meteo.com"
+licence: "CC BY 4.0"

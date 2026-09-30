@@ -10,7 +10,7 @@ from tests.conftest import ADMIN, OFFICER, auth_header
         ("18.13, 74.52", (18.13, 74.52)),
         ("18.13 74.52", (18.13, 74.52)),
         ("-33.9,18.4", (-33.9, 18.4)),
-        ("95, 74", None),  # latitude out of range
+        ("95, 74", None),
         ("Baramati", None),
     ],
 )
@@ -25,29 +25,29 @@ def _search(client, tokens, q, email=ADMIN):
 
 
 def test_search_coordinates(client, tokens):
-    r = _search(client, tokens, "18.127, 74.522")
-    assert r[0]["type"] == "coordinate" and r[0]["point"] == [74.522, 18.127]
+    r = _search(client, tokens, "18.2194, 74.4521")
+    assert r[0]["type"] == "coordinate" and r[0]["point"] == [74.4521, 18.2194]
 
 
-def test_search_admin_units(client, tokens):
-    assert ("taluka", "Baramati") in {(r["type"], r["label"]) for r in _search(client, tokens, "bara")}
-    assert any(r["type"] == "village" for r in _search(client, tokens, "Malegaon"))
+def test_search_real_admin_units(client, tokens):
+    assert ("taluka", "Baramati") in {(r["type"], r["label"]) for r in _search(client, tokens, "barama")}
+    assert any(r["type"] == "district" and r["label"] == "Pune" for r in _search(client, tokens, "Pune"))
 
 
 def test_search_scopes_units_for_officer(client, tokens):
-    assert _search(client, tokens, "Nashik", OFFICER) == []
+    assert not any(r["label"] == "Nashik" for r in _search(client, tokens, "Nashik", OFFICER))
     assert any(r["label"] == "Nashik" for r in _search(client, tokens, "Nashik", ADMIN))
 
 
-def test_search_plot_code_crop_date_and_id(client, tokens):
-    plots = _search(client, tokens, "MLG-007")
+def test_search_plots_surveys_dates_ids(client, tokens, world):
+    plots = _search(client, tokens, "P-003")
     assert len(plots) == 2 and all(r["type"] == "plot" for r in plots)  # one per dated survey
-    crops = _search(client, tokens, "sugar")
-    assert crops and all(r["type"] == "crop" and r["crop"] == "sugarcane" for r in crops)
     dated = _search(client, tokens, "2026-08-20")
-    assert len(dated) == 1 and dated[0]["type"] == "survey"
-    assert _search(client, tokens, dated[0]["id"])[0]["id"] == dated[0]["id"]
+    assert [r["id"] for r in dated] == [world["new"]["id"]]
+    assert _search(client, tokens, world["new"]["id"])[0]["id"] == world["new"]["id"]
+    assert any(r["type"] == "survey" for r in _search(client, tokens, "Baramati field"))
     assert _search(client, tokens, "2026-02-30") == []
+    assert _search(client, tokens, "sugarcane") == []  # no AI crop results exist
 
 
 def test_search_requires_query(client, tokens):

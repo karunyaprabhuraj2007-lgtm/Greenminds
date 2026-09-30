@@ -178,3 +178,9 @@ class Raster(UUIDPk, Timestamps, Base):
     stats_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     calibrated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Provenance shown on the layer, e.g. "Sentinel-2 L2A", scene id, date, cloud %.
+    source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    scene_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    acquired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cloud_cover: Mapped[float | None] = mapped_column(Float, nullable=True)
+    attribution: Mapped[str | None] = mapped_column(String(500), nullable=True)

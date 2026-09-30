@@ -4,18 +4,17 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import load_yaml_config
-from app.db.models import Alert, AuditLog, Mission, MissionStatus, Survey
+from app.db.models import Alert, AuditLog, Mission, MissionStatus
 from tests.conftest import ADMIN, OFFICER, OPERATOR, VERIFIER, auth_header
 
 KEYS = [i["key"] for i in load_yaml_config("preflight")["items"]]
 
 
 @pytest.fixture()
-def mission(db):
-    """A mission row on the latest demo survey (created directly: mission
+def mission(db, world):
+    """A mission row on the newest Baramati survey (created directly: mission
     creation wraps the flight planner, integrated separately)."""
-    survey = db.scalar(select(Survey).where(Survey.is_demo.is_(True)).order_by(Survey.survey_date.desc()))
-    m = Mission(survey_id=survey.id, camera_profile="survey3w_rgn", aircraft_profile="agroscan_quad",
+    m = Mission(survey_id=uuid.UUID(world["new"]["id"]), camera_profile="survey3w_rgn", aircraft_profile="agroscan_quad",
                 altitude_m=100, front_overlap=0.8, side_overlap=0.7)
     db.add(m)
     db.commit()
@@ -99,8 +98,8 @@ def test_checklist_closed_after_flight(client, tokens, mission, db):
     assert _submit(client, tokens, mission.id).status_code == 409
 
 
-def test_mission_scope(client, tokens, mission, nashik_survey, db):
-    m = Mission(survey_id=nashik_survey, camera_profile="survey3w_rgn", aircraft_profile="agroscan_quad",
+def test_mission_scope(client, tokens, mission, world, db):
+    m = Mission(survey_id=uuid.UUID(world["nashik"]), camera_profile="survey3w_rgn", aircraft_profile="agroscan_quad",
                 altitude_m=100, front_overlap=0.8, side_overlap=0.7)
     db.add(m)
     db.commit()

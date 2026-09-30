@@ -14,6 +14,23 @@ from app.db.base import Base, Timestamps, UUIDPk
 from app.db.models.enums import Role, pg_enum
 
 
+class Dataset(UUIDPk, Timestamps, Base):
+    """An external dataset with its provenance, licence and attribution."""
+
+    __tablename__ = "datasets"
+
+    key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    provider: Mapped[str] = mapped_column(String(200), nullable=False)
+    original_source: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    licence: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    attribution: Mapped[str] = mapped_column(String(500), nullable=False)
+    version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class District(UUIDPk, Timestamps, Base):
     __tablename__ = "districts"
 
@@ -21,6 +38,8 @@ class District(UUIDPk, Timestamps, Base):
     geom: Mapped[Any] = mapped_column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)
     # True when the boundary is a simplified demo geometry, not an official one.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True)
 
     talukas: Mapped[list[Taluka]] = relationship(back_populates="district")
 
@@ -34,6 +53,8 @@ class Taluka(UUIDPk, Timestamps, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     geom: Mapped[Any] = mapped_column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True)
 
     district: Mapped[District] = relationship(back_populates="talukas")
     villages: Mapped[list[Village]] = relationship(back_populates="taluka")
@@ -48,6 +69,8 @@ class Village(UUIDPk, Timestamps, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     geom: Mapped[Any] = mapped_column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True)
 
     taluka: Mapped[Taluka] = relationship(back_populates="villages")
 

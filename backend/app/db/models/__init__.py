@@ -1,5 +1,6 @@
 """Import every model so Alembic and `Base.metadata` see the full schema."""
-from app.db.models.core import AuditLog, District, Taluka, User, Village
+from app.db.models.core import AuditLog, Dataset, District, Taluka, User, Village
+from app.db.models.observation import SatelliteObservation, WeatherDaily
 from app.db.models.enums import (
     AlertSeverity,
     DamageClass,
@@ -33,7 +34,7 @@ from app.db.models.survey import (
 )
 
 __all__ = [
-    "Alert", "AlertSeverity", "AuditLog", "DamageAssessment", "DamageClass", "District",
+    "Alert", "AlertSeverity", "AuditLog", "Dataset", "SatelliteObservation", "WeatherDaily", "DamageAssessment", "DamageClass", "District",
     "Flight", "GeotagSource", "HealthClass", "Image", "JobKind", "JobStatus", "Mission",
     "MissionStatus", "Plot", "PlotAIResult", "PlotVerification", "PreflightCheck",
     "ProcessingJob", "Raster", "RasterKind", "Report", "Role", "Survey", "SurveyStatus",

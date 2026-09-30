@@ -1,5 +1,9 @@
-"""Background job functions executed by the RQ worker."""
+"""Functions executed by the RQ worker."""
 from __future__ import annotations
+
+from app.services.jobs import run_job
+
+__all__ = ["run_job", "ping"]
 
 
 def ping() -> str:

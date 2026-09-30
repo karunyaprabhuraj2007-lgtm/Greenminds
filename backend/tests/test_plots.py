@@ -1,38 +1,31 @@
-from tests.conftest import latest_demo_survey_id, ADMIN, OFFICER, VERIFIER, auth_header
+from tests.conftest import ADMIN, OFFICER, VERIFIER, auth_header
 
 
-def _plot(client, tokens, email=OFFICER, index=0):
-    h = auth_header(tokens, email)
-    sid = latest_demo_survey_id(client, h)
-    fc = client.get(f"/api/surveys/{sid}/plots", headers=h).json()
+def _plot(client, tokens, world, key="new", index=0, email=OFFICER):
+    fc = client.get(f"/api/surveys/{world[key]['id']}/plots", headers=auth_header(tokens, email)).json()
     return fc["features"][index]["properties"]
 
 
-def test_plot_detail_keeps_ai_and_human_separate(client, tokens):
-    props = _plot(client, tokens)
-    res = client.get(f"/api/plots/{props['id']}", headers=auth_header(tokens, OFFICER))
-    assert res.status_code == 200
-    body = res.json()
-    assert body["plot_code"] == props["plot_code"]
-    assert body["ai_result"]["model_version"] == "demo-seed-v0"
+def test_plot_detail_keeps_ai_and_human_separate(client, tokens, world):
+    props = _plot(client, tokens, world)
+    body = client.get(f"/api/plots/{props['id']}", headers=auth_header(tokens, OFFICER)).json()
+    assert body["plot_code"] == "P-001" and body["parcel_ref"] == "Gat 101"
+    assert body["ai_result"] is None
     assert body["verification"] == {"status": "ai_only", "count": 0, "latest": None}
-    assert body["survey"]["is_demo"] is True and body["is_demo"] is True
-    assert body["village_name"] == "Malegaon Bk (demo)"
+    assert body["is_demo"] is False and body["survey"]["is_demo"] is False
     assert body["geometry"]["type"] == "Polygon" and len(body["bbox"]) == 4
+    assert abs(body["area_ha"] - 1.08) < 0.01  # 90 m x 120 m
 
 
-def test_plot_timeline_has_one_point_per_dated_survey(client, tokens):
-    props = _plot(client, tokens, index=5)
-    res = client.get(f"/api/plots/{props['id']}/timeline", headers=auth_header(tokens, ADMIN))
-    points = res.json()["points"]
+def test_plot_timeline_has_one_point_per_dated_survey(client, tokens, world):
+    props = _plot(client, tokens, world, index=2)
+    points = client.get(f"/api/plots/{props['id']}/timeline", headers=auth_header(tokens, ADMIN)).json()["points"]
     assert [p["survey_date"] for p in points] == ["2026-07-15", "2026-08-20"]
-    assert all(p["plot_code"] == props["plot_code"] for p in points)
-    # Seeded early-season NDVI is lower (crop growth).
-    assert points[0]["ndvi_mean"] < points[1]["ndvi_mean"]
-    assert all(p["is_demo"] for p in points)
+    assert all(p["plot_code"] == "P-003" for p in points)
+    assert all(p["ndvi_mean"] is None for p in points)  # no AI results exist
 
 
-def test_plot_not_visible_to_verifier_yet(client, tokens):
-    props = _plot(client, tokens)
+def test_plot_not_visible_to_verifier_yet(client, tokens, world):
+    props = _plot(client, tokens, world)
     assert client.get(f"/api/plots/{props['id']}", headers=auth_header(tokens, VERIFIER)).status_code == 404
     assert client.get(f"/api/plots/{props['id']}/timeline", headers=auth_header(tokens, VERIFIER)).status_code == 404

@@ -50,6 +50,11 @@ class Plot(UUIDPk, Timestamps, Base):
     # Auto-generated plots are candidates until an officer confirms them.
     is_candidate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Provenance: "drawn" or "import:<filename>" (geometry is never invented).
+    source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class PlotAIResult(UUIDPk, Timestamps, Base):

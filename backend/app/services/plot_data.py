@@ -62,12 +62,14 @@ def ai_result_dict(r: PlotAIResult | None) -> dict[str, Any] | None:
     }
 
 
-def current_surveys(surveys: list[Survey]) -> list[Survey]:
-    """Processed surveys not superseded by a later processed survey of an
-    overlapping area. Old surveys are kept; they just don't count twice."""
+def current_surveys(surveys: list[Survey], statuses: tuple[SurveyStatus, ...] | None = DONE_STATUSES) -> list[Survey]:
+    """Surveys not superseded by a later survey (same statuses) of an
+    overlapping area. Old surveys are kept; they just don't count twice.
+    `statuses=None` considers every non-archived survey."""
     from app.services.geo import to_shapely
 
-    done = [s for s in surveys if s.status in DONE_STATUSES and s.aoi is not None and s.survey_date]
+    pool = [s for s in surveys if (s.status in statuses if statuses else s.status != SurveyStatus.archived)]
+    done = [s for s in pool if s.aoi is not None and s.survey_date]
     shapes = {s.id: to_shapely(s.aoi) for s in done}
     current = []
     for s in done:

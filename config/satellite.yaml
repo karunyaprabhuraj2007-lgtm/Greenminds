@@ -1,0 +1,17 @@
+# Sentinel-2 L2A monitoring via a public STAC API (no key needed).
+stac_url: https://earth-search.aws.element84.com/v1
+collection: sentinel-2-l2a
+# Earth Search v1 asset keys for red (B04), near-infrared (B08) and the scene classification layer.
+assets: {red: red, nir: nir, scl: scl}
+lookback_days: 365
+max_scene_cloud_pct: 80        # skip scenes whose whole-tile cloud cover is above this
+max_items: 400
+# SCL classes treated as clear (4 vegetation, 5 not vegetated, 6 water, 7 unclassified).
+# Masked: 0 no data, 1 saturated, 2 dark/shadow, 3 cloud shadow, 8/9 cloud, 10 cirrus, 11 snow.
+scl_clear_classes: [4, 5, 6, 7]
+min_valid_pixels: 4            # fewer clear 10 m pixels -> no NDVI for that date
+min_clear_fraction: 0.6        # a date is "clear" (usable for the latest NDVI layer) above this
+min_refresh_interval_hours: 6  # cache: a refresh within this window is not repeated unless forced
+ndvi_rescale: [0.0, 0.9]
+attribution: "Contains modified Copernicus Sentinel data (processed by ESA); scenes via Element 84 Earth Search"
+licence: "Copernicus Sentinel data terms (free, full and open)"

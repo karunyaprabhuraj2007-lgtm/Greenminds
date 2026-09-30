@@ -9,7 +9,7 @@ from app.services.aoi_io import AoiError, find_default_aoi, polygon_from_geojson
 from app.services.geo import geodesic_area_ha, offset_lonlat
 from tests.conftest import OFFICER, VERIFIER, auth_header
 
-RING = [list(offset_lonlat(74.53, 18.14, e, n)) for e, n in [(0, 0), (200, 0), (200, 100), (0, 100), (0, 0)]]
+RING = [list(offset_lonlat(74.4521, 18.2194, e, n)) for e, n in [(0, 0), (200, 0), (200, 100), (0, 100), (0, 0)]]
 POLY = {"type": "Polygon", "coordinates": [RING]}
 
 
@@ -33,7 +33,7 @@ def test_largest_polygon_is_chosen_and_z_dropped():
 
 
 def test_kml_polygon_with_hole():
-    hole = [list(offset_lonlat(74.53, 18.14, e, n)) for e, n in [(50, 25), (100, 25), (100, 75), (50, 75), (50, 25)]]
+    hole = [list(offset_lonlat(74.4521, 18.2194, e, n)) for e, n in [(50, 25), (100, 25), (100, 75), (50, 75), (50, 25)]]
     fmt = lambda ring: " ".join(f"{x},{y},0" for x, y in ring)  # noqa: E731
     kml = f"""<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>
       <Polygon><outerBoundaryIs><LinearRing><coordinates>{fmt(RING)}</coordinates></LinearRing></outerBoundaryIs>

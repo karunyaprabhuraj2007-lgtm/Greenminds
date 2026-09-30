@@ -57,6 +57,8 @@ class JobKind(str, enum.Enum):
     classify = "classify"
     damage = "damage"
     report = "report"
+    satellite = "satellite"
+    weather = "weather"
 
 
 class JobStatus(str, enum.Enum):

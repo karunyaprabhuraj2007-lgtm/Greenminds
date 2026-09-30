@@ -1,0 +1,38 @@
+[
+  {
+    "key": "geoboundaries-ind-adm2",
+    "name": "Maharashtra districts",
+    "provider": "geoBoundaries (gbOpen)",
+    "original_source": "Pathways Data Pvt. Ltd., lgdirectory.gov.in",
+    "licence": "Open Data Commons Open Database License 1.0",
+    "boundary_id": "IND-ADM2-76128533",
+    "boundary_year": "2021",
+    "build_date": "Dec 12, 2023",
+    "url": "https://www.geoboundaries.org/countryDownloads.html",
+    "attribution": "Boundaries: geoBoundaries (IND-ADM2-76128533, Pathways Data Pvt. Ltd., lgdirectory.gov.in), Open Data Commons Open Database License 1.0"
+  },
+  {
+    "key": "geoboundaries-ind-adm3",
+    "name": "Maharashtra talukas (sub-districts)",
+    "provider": "geoBoundaries (gbOpen)",
+    "original_source": "Pathways Data Pvt. Ltd., lgdirectory.gov.in",
+    "licence": "Open Data Commons Open Database License 1.0",
+    "boundary_id": "IND-ADM3-7132399",
+    "boundary_year": "2018",
+    "build_date": "Dec 12, 2023",
+    "url": "https://www.geoboundaries.org/countryDownloads.html",
+    "attribution": "Boundaries: geoBoundaries (IND-ADM3-7132399, Pathways Data Pvt. Ltd., lgdirectory.gov.in), Open Data Commons Open Database License 1.0"
+  },
+  {
+    "key": "geoboundaries-ind-adm1",
+    "name": "Maharashtra state outline (dissolved from districts)",
+    "provider": "geoBoundaries (gbOpen)",
+    "original_source": "DataMeet India community, Election Commission of India",
+    "licence": "Creative Commons Attribution 2.5 India (CC BY 2.5 IN)",
+    "boundary_id": "IND-ADM1-1811400",
+    "boundary_year": "2011",
+    "build_date": "Dec 12, 2023",
+    "url": "https://www.geoboundaries.org/countryDownloads.html",
+    "attribution": "Boundaries: geoBoundaries (IND-ADM1-1811400, DataMeet India community, Election Commission of India), Creative Commons Attribution 2.5 India (CC BY 2.5 IN)"
+  }
+]

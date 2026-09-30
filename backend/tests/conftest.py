@@ -2,11 +2,16 @@
 
 Tests run against a real PostGIS database (TEST_DATABASE_URL). The schema is
 rebuilt from the Alembic migrations (downgrade to base, upgrade to head) at the
-start of the session, so every run also exercises the migrations.
+start of the session, so every run also exercises the migrations. The start-up
+seed loads the real Maharashtra boundaries and the demo user accounts.
+
+Survey / plot data used by tests is created through the API in the `world`
+fixture, exactly as an officer or operator would create it.
 """
 from __future__ import annotations
 
 import os
+import tempfile
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -14,9 +19,8 @@ TEST_DATABASE_URL = os.environ.get(
 )
 # Must be set before the app (and its engine) is imported.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-import tempfile  # noqa: E402
-
 os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="gm-test-data-")
+os.environ["JOBS_INLINE"] = "true"
 os.environ.setdefault("JWT_SECRET", "test-secret-for-pytest-only-0123456789")
 
 from pathlib import Path  # noqa: E402
@@ -25,10 +29,12 @@ import pytest  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 from app.db.session import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.seed.seed_demo import DEMO_PASSWORD, seed  # noqa: E402
+from app.seed.seed import DEMO_PASSWORD, seed  # noqa: E402
+from app.services.geo import offset_lonlat  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -36,6 +42,9 @@ ADMIN = "admin@greenminds.demo"
 OFFICER = "officer.pune@greenminds.demo"
 OPERATOR = "operator@greenminds.demo"
 VERIFIER = "verifier@greenminds.demo"
+
+# A field inside the real Baramati taluka boundary.
+FIELD_ORIGIN = (74.4521, 18.2194)
 
 
 def _alembic_config() -> Config:
@@ -80,30 +89,70 @@ def auth_header(tokens: dict[str, dict], email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {tokens[email]['access_token']}"}
 
 
+def rect(origin: tuple[float, float], east_m: float, north_m: float, w: float, h: float) -> dict:
+    """GeoJSON polygon of a w x h metre rectangle offset from `origin`."""
+    lon, lat = origin
+    corners = [(east_m, north_m), (east_m + w, north_m), (east_m + w, north_m + h), (east_m, north_m + h), (east_m, north_m)]
+    return {"type": "Polygon", "coordinates": [[list(offset_lonlat(lon, lat, e, n)) for e, n in corners]]}
+
+
+def unit_ids(db, district: str, taluka: str | None = None) -> dict[str, str | None]:
+    from app.db.models import District, Taluka
+
+    d = db.scalar(select(District).where(District.name == district))
+    t = db.scalar(select(Taluka).where(Taluka.name == taluka, Taluka.district_id == d.id)) if taluka else None
+    return {"district_id": str(d.id), "taluka_id": str(t.id) if t else None}
+
+
 @pytest.fixture(scope="session")
-def nashik_survey():
-    """A processed survey in Nashik created by the admin: outside the Pune
-    officer's district and not owned by the drone operator."""
-    from geoalchemy2.shape import from_shape
-    from shapely.geometry import box
-    from sqlalchemy import select
-
-    from app.db.models import District, Survey, SurveyStatus, SurveyType, User
-
+def world(client, tokens) -> dict:
+    """Two dated surveys of the same Baramati field (operator-owned, with drawn
+    plots) and one Nashik survey owned by the admin."""
+    h_op = auth_header(tokens, OPERATOR)
+    h_admin = auth_header(tokens, ADMIN)
     with SessionLocal() as db:
-        nashik = db.scalar(select(District).where(District.name == "Nashik"))
-        admin = db.scalar(select(User).where(User.email == ADMIN))
-        survey = Survey(
-            name="Nashik test survey", type=SurveyType.crop_health, status=SurveyStatus.processed,
-            district_id=nashik.id, created_by=admin.id, aoi=from_shape(box(73.98, 20.16, 73.99, 20.17), srid=4326),
-            aoi_area_ha=110.0, is_demo=False,
-        )
-        db.add(survey)
-        db.commit()
-        return survey.id
+        pune = unit_ids(db, "Pune", "Baramati")
+        nashik = unit_ids(db, "Nashik", "Niphad")
+    aoi = rect(FIELD_ORIGIN, 0, 0, 420, 300)
+    out: dict = {"aoi": aoi}
+    for key, day in (("old", "2026-07-15"), ("new", "2026-08-20")):
+        res = client.post("/api/surveys", headers=h_op, json={
+            "name": f"Baramati field {day}", "type": "crop_health", **pune, "aoi": aoi, "survey_date": day,
+            "season": "Kharif 2026"})
+        assert res.status_code == 201, res.text
+        sid = res.json()["id"]
+        codes = []
+        for i in range(4):
+            geom = rect(FIELD_ORIGIN, 10 + i * 100, 10, 90, 120)
+            r = client.post(f"/api/surveys/{sid}/plots", headers=h_op, json={"geometry": geom, "parcel_ref": f"Gat {101 + i}"})
+            assert r.status_code == 201, r.text
+            codes.append(r.json())
+        out[key] = {"id": sid, "plots": codes}
+    res = client.post("/api/surveys", headers=h_admin, json={
+        "name": "Niphad test survey", "type": "crop_survey", **nashik,
+        "aoi": rect((74.1169, 20.0809), 0, 0, 300, 300), "survey_date": "2026-08-01"})
+    assert res.status_code == 201, res.text
+    out["nashik"] = res.json()["id"]
+    return out
 
 
-def latest_demo_survey_id(client: TestClient, headers: dict[str, str]) -> str:
-    """Newest seeded demo survey visible to the caller (other tests add surveys)."""
-    items = client.get("/api/surveys?page_size=500", headers=headers).json()["items"]
-    return next(s["id"] for s in items if s["is_demo"])
+@pytest.fixture(scope="session")
+def satellite_world(client, tokens, world) -> dict:
+    """Run the Sentinel-2 refresh for the newest Baramati survey against the
+    recorded STAC fixture (see tests/satellite_fixture.py)."""
+    import httpx
+
+    from app.core.config import get_settings
+    from app.services.satellite import pipeline
+    from tests.satellite_fixture import stac_transport, write_scene_rasters
+
+    folder = Path(get_settings().data_dir) / "stac-fixture"
+    plot = client.get(f"/api/plots/{world['new']['plots'][0]['id']}", headers=auth_header(tokens, OPERATOR)).json()
+    write_scene_rasters(folder, world["aoi"], plot["geometry"])
+    requests: list = []
+    original = pipeline.http_client_factory
+    pipeline.http_client_factory = lambda: httpx.Client(transport=stac_transport(folder, requests))
+    res = client.post(f"/api/surveys/{world['new']['id']}/satellite/refresh", headers=auth_header(tokens, OPERATOR))
+    pipeline.http_client_factory = original
+    assert res.status_code == 200, res.text
+    return {"refresh": res.json(), "requests": requests, "folder": folder}

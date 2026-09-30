@@ -14,6 +14,7 @@ from app.api import (
     layers,
     missions,
     notifications,
+    observations,
     plots,
     search,
     surveys,
@@ -46,9 +47,10 @@ def create_app() -> FastAPI:
     install_error_handlers(app)
     for module in (
         health, auth, users, admin_units, audit_log, surveys, plots,
-        dashboard, search, notifications, layers, tiles, demo, missions,
+        dashboard, search, notifications, layers, tiles, demo, missions, observations,
     ):
         app.include_router(module.router)
+    app.include_router(plots.survey_plots_router)
     return app
 
 
