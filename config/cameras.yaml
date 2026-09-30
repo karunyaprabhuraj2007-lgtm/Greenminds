@@ -1,0 +1,23 @@
+# Survey camera profiles.
+# All values are defaults taken from public MAPIR Survey3 information.
+# VERIFY AGAINST THE MAPIR DATASHEET for your exact camera/lens/filter before flying.
+# band_map = channel index in the captured image for each spectral band.
+# The channel order depends on the filter (RGN, OCN, ...). VERIFY per MAPIR docs.
+survey3w_rgn:
+  label: "MAPIR Survey3W RGN (wide lens)"
+  image_width_px: 4000
+  image_height_px: 3000
+  focal_length_mm: 3.37
+  pixel_size_um: 1.55
+  min_trigger_interval_s: 2.0
+  band_map: {red: 0, green: 1, nir: 2}
+  verified: false   # set true once checked against the datasheet / bench test
+survey3n_rgn:
+  label: "MAPIR Survey3N RGN (narrow lens)"
+  image_width_px: 4000
+  image_height_px: 3000
+  focal_length_mm: 8.25
+  pixel_size_um: 1.55
+  min_trigger_interval_s: 2.0
+  band_map: {red: 0, green: 1, nir: 2}
+  verified: false

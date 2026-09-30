@@ -1,0 +1,20 @@
+# Indicative thresholds. These are configurable and NOT agronomically certified.
+# They vary by crop, growth stage, sensor and calibration.
+health:
+  ndvi_healthy_min: 0.6      # NDVI > 0.6  -> healthy
+  ndvi_moderate_min: 0.3     # 0.3..0.6    -> moderate ; < 0.3 -> severe
+damage:
+  # NDVI drop (before - after) per plot
+  delta_low: 0.05
+  delta_moderate: 0.15
+  delta_severe: 0.30
+classification:
+  min_labelled_plots: 30        # below this, classification is reported as unavailable
+  min_samples_per_class: 5
+  test_size: 0.3
+plots:
+  min_area_m2: 200
+  simplify_tolerance_m: 1.0
+  vegetation_ndvi_min: 0.3
+alerts:
+  severe_stress_pct: 40         # plot stress % above which an alert is raised

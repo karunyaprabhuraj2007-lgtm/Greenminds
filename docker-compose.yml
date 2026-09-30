@@ -1,0 +1,141 @@
+# GreenMinds Crop Intelligence Platform
+#   docker compose up                                  -> core platform
+#   docker compose --profile odm --profile sim up      -> + NodeODM photogrammetry + ArduPilot SITL
+name: greenminds
+
+x-backend-env: &backend-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://greenminds:greenminds@db:5432/greenminds}
+  JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-at-least-32-bytes}
+  ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-30}
+  REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-7}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-greenminds}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-greenminds-secret}
+  MINIO_BUCKET: ${MINIO_BUCKET:-greenminds}
+  MINIO_SECURE: ${MINIO_SECURE:-false}
+  TITILER_URL: ${TITILER_URL:-http://localhost:8001}
+  NODEODM_URL: ${NODEODM_URL:-http://nodeodm:3000}
+  VIDEO_SOURCE_URL: ${VIDEO_SOURCE_URL:-}
+  MEDIAMTX_PATH: ${MEDIAMTX_PATH:-drone}
+  MEDIAMTX_WEBRTC_URL: ${MEDIAMTX_WEBRTC_URL:-http://localhost:8889}
+  MEDIAMTX_HLS_URL: ${MEDIAMTX_HLS_URL:-http://localhost:8888}
+  TELEMETRY_MODE: ${TELEMETRY_MODE:-replay}
+  MAVLINK_URL: ${MAVLINK_URL:-udp:0.0.0.0:14550}
+  CAMERA_PROFILE: ${CAMERA_PROFILE:-survey3w_rgn}
+  AIRCRAFT_PROFILE: ${AIRCRAFT_PROFILE:-agroscan_quad}
+  DEMO_MODE: ${DEMO_MODE:-true}
+  DEMO_PASSWORD: ${DEMO_PASSWORD:-GreenMinds@2026}
+  CONFIG_DIR: /config
+  TEST_DATABASE_URL: postgresql+psycopg://greenminds:greenminds@db:5432/greenminds_test
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-greenminds}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-greenminds}
+      POSTGRES_DB: ${POSTGRES_DB:-greenminds}
+    ports: ["5432:5432"]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./backend/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-greenminds} -d ${POSTGRES_DB:-greenminds}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  minio:
+    # S3-compatible object storage. The service keeps the name "minio" so the
+    # app config (MINIO_ENDPOINT=minio:9000) is stable. MinIO no longer
+    # publishes images on Docker Hub, so the default is RustFS, a
+    # MinIO-compatible S3 server (same ports). Set S3_IMAGE to use another
+    # S3 server image (e.g. a MinIO image from your own registry). See docs/LIMITATIONS.md.
+    image: ${S3_IMAGE:-rustfs/rustfs:latest}
+    environment:
+      RUSTFS_ACCESS_KEY: ${MINIO_ACCESS_KEY:-greenminds}
+      RUSTFS_SECRET_KEY: ${MINIO_SECRET_KEY:-greenminds-secret}
+      RUSTFS_CONSOLE_ENABLE: "true"
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-greenminds}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-greenminds-secret}
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - s3-data:/data
+
+  backend:
+    build: ./backend
+    environment:
+      <<: *backend-env
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    ports: ["8000:8000"]
+    volumes:
+      - ./config:/config:ro
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    build: ./backend
+    command: ["rq", "worker", "--url", "redis://redis:6379/0", "greenminds"]
+    environment: *backend-env
+    volumes:
+      - ./config:/config:ro
+    depends_on:
+      backend: { condition: service_healthy }
+
+  frontend:
+    build: ./frontend
+    ports: ["5173:80"]
+    depends_on:
+      - backend
+
+  titiler:
+    image: ghcr.io/developmentseed/titiler:latest
+    environment:
+      PORT: 8000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-greenminds}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-greenminds-secret}
+      AWS_S3_ENDPOINT: minio:9000
+      AWS_HTTPS: "NO"
+      AWS_VIRTUAL_HOSTING: "FALSE"
+    ports: ["8001:8000"]
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    environment:
+      MTX_PROTOCOLS: tcp
+    ports:
+      - "8554:8554"   # RTSP ingest (ffmpeg pushes here)
+      - "8889:8889"   # WebRTC (WHEP)
+      - "8888:8888"   # HLS fallback
+
+  # ---- optional heavy services ----
+  nodeodm:
+    image: opendronemap/nodeodm
+    profiles: ["odm"]
+    ports: ["3000:3000"]
+
+  sitl:
+    # ArduCopter SITL. Built from tools/sitl in Phase 4.
+    build: ./tools/sitl
+    profiles: ["sim"]
+    ports: ["14550:14550/udp"]
+
+volumes:
+  db-data:
+  s3-data:

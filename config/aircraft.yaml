@@ -1,0 +1,11 @@
+# Aircraft profiles used by the flight planner.
+# Values are placeholders for the GreenMinds survey quad. VERIFY with real flight logs.
+agroscan_quad:
+  label: "GreenMinds survey quad (Pixhawk 6X, ArduCopter)"
+  cruise_speed_ms: 8.0
+  max_speed_ms: 12.0
+  max_flight_time_min: 25
+  flight_time_safety_factor: 0.7   # usable fraction of max_flight_time_min per flight
+  turn_time_s: 6.0                 # time budget per line turn-around
+  takeoff_landing_time_s: 90       # climb + transit + descent budget per flight
+  max_altitude_m: 120              # DGCA green-zone ceiling; check Digital Sky for your area
