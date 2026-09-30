@@ -21,6 +21,7 @@ dependencies = [
   "pyyaml>=6.0",
   "redis>=5.0",
   "rq>=1.16",
+  "rio-tiler>=7.0",
 ]
 
 [project.optional-dependencies]

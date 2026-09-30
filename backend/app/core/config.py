@@ -12,7 +12,8 @@ from typing import Any
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_CONFIG_DIR = _REPO_ROOT / "config"
 
 
 class Settings(BaseSettings):
@@ -39,6 +40,10 @@ class Settings(BaseSettings):
     minio_secure: bool = False
 
     titiler_url: str = "http://localhost:8001"
+    # Base of the tile service. "/api/tiles" = COG tiles rendered by this backend
+    # (rio-tiler); point it at a TiTiler instance to use that instead. Both use
+    # the TiTiler URL shape: {base}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=...
+    tile_server_url: str = "/api/tiles"
     nodeodm_url: str = "http://localhost:3000"
 
     video_source_url: str = ""
@@ -53,6 +58,14 @@ class Settings(BaseSettings):
     aircraft_profile: str = "agroscan_quad"
 
     config_dir: Path = _REPO_CONFIG_DIR
+    # Local data directory (sample COGs etc.). Compose mounts a volume at /data.
+    data_dir: Path = _REPO_ROOT / "data"
+
+    # Map basemaps (any XYZ raster tile URL). Satellite context is optional.
+    basemap_tiles_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    basemap_attribution: str = "© OpenStreetMap contributors"
+    satellite_tiles_url: str = ""
+    satellite_attribution: str = ""
     demo_mode: bool = True
 
     @property

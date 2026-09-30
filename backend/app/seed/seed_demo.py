@@ -12,17 +12,23 @@ from __future__ import annotations
 import os
 import random
 from datetime import date
+from pathlib import Path
 
 from geoalchemy2.shape import from_shape
 from shapely.geometry import MultiPolygon, Polygon, box
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db.models import (
+    Alert,
+    AlertSeverity,
     District,
     Plot,
     PlotAIResult,
+    Raster,
+    RasterKind,
     Role,
     Survey,
     SurveyStatus,
@@ -32,7 +38,8 @@ from app.db.models import (
     Village,
 )
 from app.db.session import SessionLocal
-from app.services.geo import SRID, geodesic_area_ha, offset_lonlat
+from app.services.geo import SRID, geodesic_area_ha, offset_lonlat, to_shapely
+from app.services.sample_data import PlotNdvi, write_ndvi_cog
 from app.services.thresholds import classify_health, load_thresholds
 
 DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "GreenMinds@2026")
@@ -217,10 +224,71 @@ def seed_surveys(db: Session, units: dict[str, object], users: dict[str, User]) 
             )
 
 
+def seed_rasters(db: Session) -> None:
+    """Synthetic NDVI COG per demo survey (regenerated if the file is missing)."""
+    out_dir = Path(get_settings().data_dir) / "samples"
+    surveys = db.scalars(select(Survey).where(Survey.is_demo.is_(True)).order_by(Survey.survey_date)).all()
+    for index, survey in enumerate(surveys):
+        path = out_dir / f"demo_ndvi_{survey.survey_date:%Y%m%d}.tif"
+        raster = db.scalar(
+            select(Raster).where(Raster.survey_id == survey.id, Raster.kind == RasterKind.ndvi)
+        )
+        if raster is not None and path.exists():
+            continue
+        rows = db.execute(
+            select(Plot.geom, PlotAIResult.ndvi_mean, PlotAIResult.ndvi_p10, PlotAIResult.ndvi_p90)
+            .join(PlotAIResult, PlotAIResult.plot_id == Plot.id)
+            .where(Plot.survey_id == survey.id)
+        ).all()
+        plots = [PlotNdvi(to_shapely(g), mean, p10, p90) for g, mean, p10, p90 in rows]
+        stats = write_ndvi_cog(path, to_shapely(survey.aoi), plots, seed=1000 + index)
+        if raster is None:
+            raster = Raster(survey_id=survey.id, kind=RasterKind.ndvi)
+            db.add(raster)
+        raster.object_key = None
+        raster.cog_url = str(path)
+        raster.crs = stats["crs"]
+        raster.gsd_cm = stats["resolution_m"] * 100
+        raster.bounds = survey.aoi
+        raster.stats_json = stats
+        raster.is_demo = True
+        raster.calibrated = False
+
+
+DEMO_ALERTS = [
+    ("stress", AlertSeverity.warning, "Severe crop stress detected in {n} plots (demo)."),
+    ("verification_pending", AlertSeverity.info, "{m} plots are awaiting field verification (demo)."),
+]
+
+
+def seed_alerts(db: Session) -> None:
+    survey = db.scalar(
+        select(Survey).where(Survey.is_demo.is_(True)).order_by(Survey.survey_date.desc())
+    )
+    if survey is None or db.scalar(select(Alert.id).where(Alert.survey_id == survey.id)):
+        return
+    results = db.scalars(select(PlotAIResult).where(PlotAIResult.survey_id == survey.id)).all()
+    severe = [r for r in results if r.health_class and r.health_class.value == "severe"]
+    for kind, severity, template in DEMO_ALERTS:
+        db.add(
+            Alert(
+                kind=kind,
+                severity=severity,
+                message=template.format(n=len(severe), m=len(results)),
+                survey_id=survey.id,
+                plot_id=severe[0].plot_id if kind == "stress" and severe else None,
+                is_demo=True,
+            )
+        )
+
+
 def seed(db: Session) -> None:
     units = seed_admin_units(db)
     users = seed_users(db, units)
     seed_surveys(db, units, users)
+    db.flush()
+    seed_rasters(db)
+    seed_alerts(db)
     db.commit()
 
 

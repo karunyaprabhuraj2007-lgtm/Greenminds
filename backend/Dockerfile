@@ -6,6 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# libexpat1 is required by the GDAL bundled in the rasterio wheel.
+RUN (ldconfig -p | grep -q libexpat.so.1) || ( \
+        apt-get update \
+        && apt-get install -y --no-install-recommends libexpat1 \
+        && rm -rf /var/lib/apt/lists/* )
+
 COPY pyproject.toml ./
 RUN mkdir app && touch app/__init__.py \
     && pip install ".[dev]" \

@@ -25,6 +25,6 @@ Storage: MinIO (S3). Tiles: TiTiler (COG). Video: MediaMTX. Telemetry: pymavlink
 - Backend tests: `cd backend && pytest` — needs a PostGIS database at `TEST_DATABASE_URL`
   (default `postgresql+psycopg://greenminds:greenminds@localhost:5432/greenminds_test`).
   Inside compose: `docker compose run --rm backend pytest`.
-- Frontend checks: `cd frontend && npm run typecheck && npm run build`.
+- Frontend checks: `cd frontend && npm test && npm run typecheck && npm run build` (`npm test` = `node --test`, no extra deps).
 - Schema changes go through Alembic migrations in `backend/alembic/versions/`.
 - Ambiguities and simplifications are recorded in `docs/LIMITATIONS.md`.

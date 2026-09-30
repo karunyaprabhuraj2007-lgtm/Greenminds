@@ -7,6 +7,10 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_PROXY_TARGET || "http://localhost:8000";
   return {
     plugins: [react()],
+    build: {
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: { output: { manualChunks: { maplibre: ["maplibre-gl"] } } },
+    },
     server: {
       host: "0.0.0.0",
       port: 5173,

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { AuditLog } from "../pages/AuditLog";
+import { Dashboard } from "../pages/Dashboard";
+import { GisMap } from "../pages/GisMap";
 import { Login } from "../pages/Login";
 import { NotFound } from "../pages/NotFound";
 import { PhasePlaceholder } from "../pages/PhasePlaceholder";
@@ -26,6 +28,7 @@ function RequireCapability({ capability, children }: { capability: string | null
 }
 
 const PAGES: Record<string, ReactNode> = {
+  "/map": <GisMap />,
   "/users": <Users />,
   "/audit-log": <AuditLog />,
   "/settings": <Settings />,
@@ -35,7 +38,7 @@ function Home() {
   const { can } = useAuth();
   // Roles without a dashboard (field verifier) land on their first allowed page.
   if (!can("view_dashboard")) return <Navigate to={homePath(can)} replace />;
-  return <PhasePlaceholder />;
+  return <Dashboard />;
 }
 
 export function AppRoutes() {

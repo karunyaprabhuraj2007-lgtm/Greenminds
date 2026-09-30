@@ -51,3 +51,47 @@ spec was ambiguous or not possible and a simpler option was chosen.
   individually before expiry (default 7 days). Deactivating a user blocks both refresh
   and access immediately because every request re-loads the user.
 - **SITL container** (`sim` profile) is a placeholder until Phase 4.
+
+## Phase 2 (GIS map dashboard)
+
+- **Sample NDVI raster is synthetic.** Each demo survey gets a generated NDVI COG
+  (`DATA_DIR/samples/demo_ndvi_<date>.tif`, 0.5 m, UTM 43N) built by rasterizing the
+  seeded plot NDVI values with noise. It is registered with `is_demo=true` and
+  `calibrated=false`; the map shows "Demo" and "UNCALIBRATED" badges on it. It is not
+  processed imagery. There is no sample orthomosaic yet (Phase 5 adds one).
+- **Tiles are served by the backend (rio-tiler)** at
+  `/api/tiles/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=...&rescale=...&colormap_name=...`,
+  the same URL shape as TiTiler. The `url` must match a registered raster in a survey the
+  caller can see, so the endpoint cannot read arbitrary files or URLs. TiTiler is kept as an
+  optional compose profile (`--profile tiles`, then `TILE_SERVER_URL=http://localhost:8001`).
+  TiTiler has no access control of its own; only use it on a trusted network.
+- **"Current survey" rule for dashboards.** Surveys are never overwritten, so the same field
+  can appear in several dated surveys. Dashboard health / crop / verification figures use
+  only the latest processed survey of each area (a processed survey is superseded when a
+  later processed survey's AOI intersects it). Total surveyed area is the geodesic area of
+  the union of all AOIs, so overlapping surveys are counted once. Percentages are
+  area-weighted over analysed plots.
+- **"Possible damage %"** is the area-weighted mean of `plot_ai_results.damage_pct`. It stays 0
+  until the damage module (Phase 8) writes damage values.
+- **Field verifier data scope.** "Assigned plots only" needs a plot-assignment table,
+  which arrives with the field app in Phase 7. Until then field verifiers get no survey,
+  plot or tile data (404) and no dashboard.
+- **Drone operator scope** is "surveys they created". The demo surveys are created by the
+  demo operator, so the operator sees them.
+- **Plot and unit labels** on the map are HTML markers (no glyph/font server is needed);
+  they appear from zoom 14.5 to avoid clutter.
+- **Historical surveys on the map** are detected in the browser by date + bounding-box
+  overlap (the backend dashboard uses exact AOI intersection).
+- **Measure tool** uses spherical formulas (haversine distance, spherical-excess area),
+  accurate to well under 0.5% at field scale. Official areas (plots, AOIs) are always
+  computed geodesically on the backend.
+- **Basemap** is OpenStreetMap raster tiles by default (`BASEMAP_TILES_URL`). OSM's tile usage
+  policy does not allow heavy production use; configure your own tile server or a
+  commercial provider for deployment. Satellite context is off unless
+  `SATELLITE_TILES_URL` is set.
+- **Before/after slider and "Compare surveys"** are Phase 8; the button is shown disabled.
+
+## Open tasks carried forward
+
+- **Phase 5:** test large multi-file uploads (hundreds of 5-10 MB Survey3 images) against the
+  RustFS S3 store and record any issues here.
