@@ -15,6 +15,16 @@ from app.db.session import get_db
 router = APIRouter(prefix="/api/map", tags=["map"])
 
 
+def _boundary_attribution(datasets: list[Dataset]) -> str | None:
+    drawn = [d for d in datasets if d.key.endswith(("adm2", "adm3"))]
+    if not drawn:
+        return None
+    ids = ", ".join(d.details.get("boundary_id", d.key) if d.details else d.key for d in drawn)
+    licences = sorted({d.licence for d in drawn})
+    source = drawn[0].original_source or ""
+    return f"Boundaries: geoBoundaries ({ids}; {source}), {' / '.join(licences)}"
+
+
 @router.get("/config")
 def map_config(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     settings = get_settings()
@@ -28,7 +38,8 @@ def map_config(db: Session = Depends(get_db), _: User = Depends(get_current_user
             "dark": {"tiles_url": settings.basemap_dark_tiles_url, "attribution": settings.basemap_dark_attribution},
         },
         "boundaries": {
-            "attribution": datasets[0].attribution if datasets else None,
+            # The map draws districts (ADM2) and talukas (ADM3); ADM1 is only used to select Maharashtra.
+            "attribution": _boundary_attribution(datasets),
             "datasets": [
                 {"key": d.key, "name": d.name, "provider": d.provider, "original_source": d.original_source,
                  "licence": d.licence, "url": d.url, "version": d.version, "attribution": d.attribution}

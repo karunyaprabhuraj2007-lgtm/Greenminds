@@ -11,19 +11,63 @@ spec was ambiguous or not possible and a simpler option was chosen.
   agronomically certified.
 - Crop classification quality depends entirely on the ground-truth samples collected.
   Only metrics measured by the code on a held-out test set are ever shown.
-- Demo dashboards contain seeded data and are labelled "Demo data".
+- No dashboard data is seeded; only demo user accounts exist, and they are labelled "Demo account".
 - AI outputs are decision support only; final decisions require an authorized officer.
 - Flights must comply with DGCA rules, Digital Sky restrictions, and the pilot's RPC conditions.
 
-## Demo data (Phase 1)
+## Data sources, licences and what is real (Phase 2B)
 
-- Admin boundaries for Pune / Nashik districts, their talukas and villages are
-  **simplified rectangles**, not official boundaries. They are flagged `is_demo=true`.
-  Replace them with official boundaries (e.g. from MRSAC / Survey of India) before real use.
-- The two seeded surveys at "Malegaon Bk (demo)" and their 12 plots x 2 dates of AI results
-  are **synthetic** values (`model_version = demo-seed-v0`). They are not model outputs.
-- Demo users share one password (`DEMO_PASSWORD`, default `GreenMinds@2026`). Disable
-  seeding (`SEED_DEMO_DATA=false`) and deactivate the demo users for any real deployment.
+No survey, plot, AI result, alert or dashboard number is seeded. Everything shown
+comes from rows users create (surveys, drawn / imported plots, verifications) or
+from the external datasets below. Where nothing exists, the UI shows an empty state.
+
+| Dataset | Used for | Provider / origin | Licence | Stored |
+|---|---|---|---|---|
+| District boundaries (ADM2, boundary year 2021, geoBoundaries IND-ADM2-76128533) | Map, drill-down, dashboard | geoBoundaries gbOpen; original: Pathways Data Pvt. Ltd., lgdirectory.gov.in | ODbL 1.0 | `districts` (36) + `datasets` row |
+| Taluka / sub-district boundaries (ADM3, boundary year 2018, IND-ADM3-7132399) | Map, drill-down, survey forms | geoBoundaries gbOpen; same original source | ODbL 1.0 | `talukas` (357) + `datasets` row |
+| State outline (ADM1, IND-ADM1-1811400) | Only to select the districts inside Maharashtra | geoBoundaries gbOpen; original: DataMeet / Election Commission of India | CC BY 2.5 IN | `datasets` row |
+| Sentinel-2 L2A surface reflectance (B04, B08, SCL) | NDVI time series, latest clear NDVI layer, plot health | Copernicus / ESA, via Element 84 Earth Search STAC (`sentinel-2-l2a`) | Copernicus Sentinel data terms (free, full, open) | `satellite_observations`, NDVI COG in `DATA_DIR/satellite/` |
+| Daily rainfall and temperature | Survey weather charts | Open-Meteo (ERA5-based archive + forecast API) | CC BY 4.0 | `weather_daily` |
+| Basemap tiles | Map background | OpenStreetMap (light), CARTO (dark), configurable | ODbL data; tile usage policies apply | not stored |
+
+Attribution is shown in the map footer, on every layer entry (source · date · cloud · licence),
+under charts, and on the *Account & data sources* page.
+
+**Not real / not available**
+
+- **Villages:** no open village boundary dataset is bundled, so the village level is empty
+  and hidden in forms and drill-down (taluka → surveys). The earlier demo village rectangles
+  were removed (references cleared).
+- **Boundaries are simplified** geoBoundaries releases (vertex-reduced), and ADM2 (2021) and
+  ADM3 (2018) come from different years; talukas are assigned to the district that contains
+  their representative point. Not for legal / cadastral use.
+- **Crop health** on the dashboard and map is a *Sentinel-2 NDVI class* per plot (latest
+  observation with ≥ 60 % of the plot cloud-free), with indicative thresholds from
+  `config/thresholds.yaml`. It is not crop classification and not an AI result. Crop-type
+  results only appear once a classifier produces them (Phase 6).
+- **Sentinel-2 is 10 m resolution:** plots smaller than roughly 0.1 ha (fewer than
+  `min_valid_pixels` clear pixels) get no NDVI. Pixels are counted when their centre falls
+  inside the plot.
+- **Plot geometry is never generated.** Plots come only from officers drawing them or
+  importing GeoJSON / KML / zipped shapefiles (reprojected from the `.prj`).
+- **Demo accounts** remain (one per role, `DEMO_PASSWORD`), labelled "Demo account" in the UI.
+  Disable with `SEED_DEMO_DATA=false` and deactivate them for real use.
+- **Tests** use a hand-written STAC response in Earth Search v1 format with small generated
+  rasters (`backend/tests/satellite_fixture.py`), because the live API was unreachable from the
+  build sandbox. The live API has not been exercised from this environment.
+
+**What failed to load in the build sandbox (network policy, not code)**
+
+| URL | Error |
+|---|---|
+| `https://earth-search.aws.element84.com/v1/search` | proxy CONNECT 403 — "Host not in allowlist: earth-search.aws.element84.com" |
+| `https://archive-api.open-meteo.com/v1/archive` | proxy CONNECT 403 |
+| `https://api.open-meteo.com/v1/forecast` | proxy CONNECT 403 |
+| `https://www.geoboundaries.org/api/...` | proxy CONNECT 403 (the same release files were downloaded from the geoBoundaries GitHub media host instead) |
+| `https://tile.openstreetmap.org/...`, `https://a.basemaps.cartocdn.com/...` | blocked; screenshots therefore have no basemap |
+
+The Sentinel-2 and weather jobs fail gracefully in that case: the job is marked failed, the
+exact error is shown on the survey page, and previously stored data is kept.
 
 ## Decisions taken where the spec was ambiguous
 
@@ -32,8 +76,10 @@ spec was ambiguous or not possible and a simpler option was chosen.
   `MINIO_*` variables, but the default image is **RustFS** (`rustfs/rustfs`), an
   S3-compatible, MinIO-compatible server. Any S3 server image can be used by setting
   `S3_IMAGE`. Storage is not used until Phase 5; the app will talk plain S3 API.
-- **Extra columns beyond SPEC Section 6.** `is_demo` was added to admin units, users,
-  surveys, plots, rasters and alerts so seeded records can always be badged;
+- **Extra columns beyond SPEC Section 6.** `is_demo` on admin units, users, surveys, plots,
+  rasters and alerts (no seeded record remains except demo users); provenance columns on
+  units (`source_id`, `dataset_id`), plots (`source`, `created_by`) and rasters (`source`,
+  `scene_id`, `acquired_at`, `cloud_cover`, `attribution`); a `datasets` table;
   `plots.is_candidate` marks auto-generated plots awaiting officer confirmation;
   `rasters.calibrated` drives the "UNCALIBRATED" badge; `reports.generated_at`.
   `damage_assessments.class` is exposed as `damage_class` in Python (reserved word).
@@ -54,11 +100,6 @@ spec was ambiguous or not possible and a simpler option was chosen.
 
 ## Phase 2 (GIS map dashboard)
 
-- **Sample NDVI raster is synthetic.** Each demo survey gets a generated NDVI COG
-  (`DATA_DIR/samples/demo_ndvi_<date>.tif`, 0.5 m, UTM 43N) built by rasterizing the
-  seeded plot NDVI values with noise. It is registered with `is_demo=true` and
-  `calibrated=false`; the map shows "Demo" and "UNCALIBRATED" badges on it. It is not
-  processed imagery. There is no sample orthomosaic yet (Phase 5 adds one).
 - **Tiles are served by the backend (rio-tiler)** at
   `/api/tiles/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=...&rescale=...&colormap_name=...`,
   the same URL shape as TiTiler. The `url` must match a registered raster in a survey the
@@ -66,18 +107,14 @@ spec was ambiguous or not possible and a simpler option was chosen.
   optional compose profile (`--profile tiles`, then `TILE_SERVER_URL=http://localhost:8001`).
   TiTiler has no access control of its own; only use it on a trusted network.
 - **"Current survey" rule for dashboards.** Surveys are never overwritten, so the same field
-  can appear in several dated surveys. Dashboard health / crop / verification figures use
-  only the latest processed survey of each area (a processed survey is superseded when a
-  later processed survey's AOI intersects it). Total surveyed area is the geodesic area of
-  the union of all AOIs, so overlapping surveys are counted once. Percentages are
-  area-weighted over analysed plots.
-- **"Possible damage %"** is the area-weighted mean of `plot_ai_results.damage_pct`. It stays 0
-  until the damage module (Phase 8) writes damage values.
+  can appear in several dated surveys. Plot counts, areas, health and verification figures use
+  only the plots of the latest survey of each area (a survey is superseded when a later
+  survey's AOI intersects it). Total surveyed area is the geodesic area of the union of all
+  AOIs, so overlapping surveys are counted once. Percentages are area-weighted.
 - **Field verifier data scope.** "Assigned plots only" needs a plot-assignment table,
   which arrives with the field app in Phase 7. Until then field verifiers get no survey,
   plot or tile data (404) and no dashboard.
-- **Drone operator scope** is "surveys they created". The demo surveys are created by the
-  demo operator, so the operator sees them.
+- **Drone operator scope** is "surveys they created".
 - **Plot and unit labels** on the map are HTML markers (no glyph/font server is needed);
   they appear from zoom 14.5 to avoid clutter.
 - **Historical surveys on the map** are detected in the browser by date + bounding-box
@@ -89,7 +126,14 @@ spec was ambiguous or not possible and a simpler option was chosen.
   policy does not allow heavy production use; configure your own tile server or a
   commercial provider for deployment. Satellite context is off unless
   `SATELLITE_TILES_URL` is set.
-- **Before/after slider and "Compare surveys"** are Phase 8; the button is shown disabled.
+- **Unbuilt pages are hidden** from navigation (live mission, processing, crop intelligence,
+  verification review, field app, damage/insurance/subsidy, reports) until their backend exists.
+- **Sentinel-2 refresh** is a background job (RQ worker). A refresh within
+  `min_refresh_interval_hours` (6 h) returns the cached result unless forced; already
+  processed scenes are never re-read for a target (per-scene cache). Scenes above
+  `max_scene_cloud_pct` (80 %) whole-tile cloud are not requested.
+- **Weather** comes from the Open-Meteo archive for days older than 6 days and from the
+  forecast API for recent days and the next 7; archive values win where both exist.
 
 ## Phase 3 (in progress)
 
@@ -104,8 +148,8 @@ spec was ambiguous or not possible and a simpler option was chosen.
   `draft` or `planned`; after a flight the AOI is part of the dated record and is frozen
   (create a new survey instead). Status can only be set to `archived` directly; other
   statuses follow the workflow. AOIs over `survey.max_aoi_area_ha` (default 2000 ha) are
-  rejected. An AOI outside the selected village/taluka/district is accepted with a
-  warning, because the demo boundaries are simplified rectangles.
+  rejected. An AOI outside the selected taluka/district is accepted with a warning,
+  because the boundaries are simplified.
 - **Who may create surveys.** State admins anywhere; district officers and drone operators
   only in their own district (when they have one).
 - **Pre-flight checklist** items come from `config/preflight.yaml`. Every submission is kept
@@ -119,6 +163,12 @@ spec was ambiguous or not possible and a simpler option was chosen.
   area is geodesic (they agree to within about 1%).
 - **Bug fixed during Phase 3:** `geodesic_area_ha` now re-orients polygon rings before
   measuring, so holes are subtracted whatever their winding order (known-answer tests added).
+
+## Build environment notes
+
+- **Background jobs never ran in compose before Phase 2B:** the backend image installed an empty
+  `app` package into site-packages, which the RQ worker imported instead of the source tree.
+  Fixed in the Dockerfile (placeholder uninstalled, `PYTHONPATH=/app`).
 
 ## Open tasks carried forward
 

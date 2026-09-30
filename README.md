@@ -9,15 +9,17 @@ agriculture (Rehydria Technology Pvt. Ltd.).
 - Architecture as built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Known limitations and decisions: [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
-> AI outputs are decision support only. Final administrative decisions are made by
-> authorized officers. Seeded demo data is always labelled "Demo data".
+> AI and satellite outputs are decision support only. Final administrative decisions are
+> made by authorized officers. No survey or dashboard data is seeded: every number comes
+> from the database or from the external datasets listed below.
 
 ## Build status
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Foundation: compose, PostGIS schema + Alembic, JWT + RBAC, audit log, demo seed, app shell | **Done** |
-| 2 | GIS map dashboard: MapLibre map, layers, plot panel, cards, search, drill-down, sample NDVI COG | **Done** |
+| 2 | GIS map dashboard: MapLibre map, layers, plot panel, cards, search, drill-down | **Done** |
+| 2B | Real data (geoBoundaries, Sentinel-2 NDVI, Open-Meteo, plot import/drawing), no seeded data, UI redesign, Playwright QA | **Done** |
 | 3 | New survey + flight planner | **In progress**: survey CRUD, AOI wizard, pre-flight checklist + authorization done; planner / exports wait for `greenminds_core_modules` |
 | 4 | Telemetry + live mission | Not started |
 | 5 | Upload + processing | Not started |
@@ -42,27 +44,54 @@ Then open:
 | http://localhost:8000/docs | API docs (OpenAPI) |
 | http://localhost:9001 | Object storage console |
 
-The GIS map opens on the most recent processed survey. Click a plot to open its panel;
-use the breadcrumbs or the dashboard table to drill down State > District > Taluka >
-Village > Survey > Plot.
+A fresh installation has real Maharashtra district and taluka boundaries and no surveys.
+Typical flow:
+
+1. **New survey** — pick district / taluka, draw the field (or use a polygon from `inputs/`,
+   or load a GeoJSON file).
+2. **Plots** — draw plots on the GIS map (*Draw plot*) or import GeoJSON / KML / a zipped
+   shapefile on the survey's *Plots* tab. Plot boundaries are never generated automatically.
+3. **Sentinel-2** tab — *Fetch Sentinel-2*: last 12 months of L2A scenes, SCL cloud mask,
+   NDVI per date for the area and each plot; the latest clear date becomes a map layer.
+4. **Weather** tab — *Fetch weather*: 90 days of rain / temperature plus a 7-day forecast.
+5. **Dashboard / GIS map** — drill down State > District > Taluka > Survey > Plot.
+   Press **Ctrl/⌘ K** to search anything, **?** for shortcuts.
+
+The Sentinel-2 and weather fetches need outbound HTTPS to `earth-search.aws.element84.com`,
+`sentinel-cogs.s3.us-west-2.amazonaws.com`, `archive-api.open-meteo.com` and
+`api.open-meteo.com` (and the basemap tile hosts for the map background).
 
 Optional services: `docker compose --profile odm --profile sim up` (NodeODM
 photogrammetry from Phase 5, ArduPilot SITL from Phase 4) and `--profile tiles` (TiTiler;
 by default COG tiles are served by the backend with the same URL shape).
 
-On start the backend runs the Alembic migrations and an idempotent demo seed.
+On start the backend runs the Alembic migrations and an idempotent load of the real
+boundaries (from the committed `backend/app/seed/boundaries/`, rebuilt with
+`tools/boundaries/fetch_geoboundaries.py`) plus the demo user accounts.
+
+### Data sources
+
+| Data | Source | Licence |
+|---|---|---|
+| Districts (36) and talukas (357) | geoBoundaries gbOpen IND ADM2 / ADM3 (Pathways Data, lgdirectory.gov.in) | ODbL 1.0 |
+| NDVI time series and layer | Copernicus Sentinel-2 L2A via Element 84 Earth Search STAC | Copernicus Sentinel data terms |
+| Rain and temperature | Open-Meteo archive + forecast | CC BY 4.0 |
+| Basemap | OpenStreetMap (light) / CARTO (dark), configurable | OSM ODbL; tile policies apply |
+
+Details, caveats and what is not real: [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ### Demo accounts (demo only)
 
 All demo accounts use the password `GreenMinds@2026` (set `DEMO_PASSWORD` to change it,
-`SEED_DEMO_DATA=false` to skip seeding). Never use these in a real deployment.
+`SEED_DEMO_DATA=false` to skip creating them). They are labelled "Demo account" in the UI.
+Never use these in a real deployment.
 
 | Role | Email | Sees |
 |---|---|---|
 | State Admin | admin@greenminds.demo | everything, users, audit log |
 | District Officer (Pune) | officer.pune@greenminds.demo | own district; authorize missions; final decisions |
-| Drone Operator | operator@greenminds.demo | surveys, missions, live flight, uploads, own reports |
-| Field Verifier | verifier@greenminds.demo | field verification app, assigned plots |
+| Drone Operator | operator@greenminds.demo | own surveys, plots, Sentinel-2 / weather refresh |
+| Field Verifier | verifier@greenminds.demo | account page only until plot assignments / field app (Phase 7) |
 
 ## Development without Docker
 
@@ -95,8 +124,12 @@ docker compose run --rm backend pytest
 # or locally, against any PostGIS database you can drop/recreate tables in
 cd backend && TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/greenminds_test pytest
 
-# frontend: unit tests (node --test, known-answer geometry tests), type-check + build
+# frontend: unit tests (node --test: geometry known answers, colours, empty-state logic), type-check + build
 cd frontend && npm test && npm run build
+
+# end-to-end QA against a running stack (fresh database recommended):
+# logs in as every role, creates a survey and plots through the UI, writes docs/screenshots/*.png
+cd frontend && npx playwright test          # E2E_BASE_URL, PLAYWRIGHT_CHROMIUM_PATH optional
 ```
 
 The test session rebuilds the schema from the Alembic migrations (downgrade to base,
@@ -113,7 +146,9 @@ Operational values live in env vars (`.env.example`) and YAML under `config/`:
 | `config/thresholds.yaml` | Indicative NDVI health, damage, classification and plot thresholds |
 | `config/preflight.yaml` | Pre-flight checklist items (SPEC Section 9); `telemetry` marks items auto-filled from telemetry in Phase 4 |
 | `inputs/` | Your real field polygon (`.geojson` / `.kml`), offered as the default demo AOI in the New Survey wizard |
-| `config/map.yaml` | Crop order (fixes each crop's map colour), raster styles (rescale, colormap), initial view |
+| `config/satellite.yaml` | Sentinel-2 STAC URL, collection, asset keys, SCL clear classes, cloud limits, cache interval |
+| `config/weather.yaml` | Open-Meteo URLs, history / forecast days, archive lag, timezone |
+| `config/map.yaml` | Crop order (fixes each crop's map colour), raster styles (NDVI uses the colour-blind-safe YlGn ramp), initial view |
 
 Key environment variables:
 
@@ -126,9 +161,11 @@ Key environment variables:
 | `REDIS_URL` | `redis://redis:6379/0` | Job queue |
 | `S3_IMAGE` | `rustfs/rustfs:latest` | S3 server image (MinIO images are no longer on Docker Hub) |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | local values | Object storage |
+| `BASEMAP_DARK_TILES_URL`, `BASEMAP_DARK_ATTRIBUTION` | CARTO dark | Dark basemap (toggle on the map) |
+| `JOBS_INLINE` | `false` | Run background jobs in the API process instead of the RQ worker |
 | `TILE_SERVER_URL` | `/api/tiles` | COG tile service base (backend rio-tiler; or a TiTiler URL) |
 | `INPUTS_DIR` | `/inputs` (compose mounts `./inputs`) | Folder scanned for the default demo AOI |
-| `DATA_DIR` | `/data` (compose volume) | Local data such as the generated sample NDVI COGs |
+| `DATA_DIR` | `/data` (compose volume) | Generated rasters, e.g. the latest clear Sentinel-2 NDVI COG per survey |
 | `BASEMAP_TILES_URL`, `BASEMAP_ATTRIBUTION` | OpenStreetMap | XYZ basemap (use your own tile server in production) |
 | `SATELLITE_TILES_URL`, `SATELLITE_ATTRIBUTION` | empty (off) | Optional satellite context layer |
 | `TITILER_URL`, `NODEODM_URL` | local URLs | Optional TiTiler / photogrammetry |

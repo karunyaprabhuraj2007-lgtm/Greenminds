@@ -26,9 +26,10 @@ export function ChoroplethMap({
     type: "FeatureCollection" as const,
     features: units
       .filter((u) => u.geometry)
-      .map((u) => ({
+      .map((u, i) => ({
         type: "Feature" as const,
         geometry: u.geometry!,
+        id: i,
         properties: { id: u.id, name: u.name, area: u.surveyed_area_ha ?? 0 },
       })),
   };
@@ -37,7 +38,7 @@ export function ChoroplethMap({
     (map.getSource("units") as GeoJSONSource | undefined)?.setData(fc as never);
     map.setPaintProperty("units-fill", "fill-color", [
       "case",
-      ["==", ["get", "area"], 0], "#f1f5f9",
+      ["==", ["get", "area"], 0], "#E2E8F0",
       ["interpolate", ["linear"], ["get", "area"], 0, BLUE_RAMP[0], max, BLUE_RAMP[BLUE_RAMP.length - 1]],
     ]);
     const xs = units.flatMap((u) => (u.bbox ? [u.bbox] : []));
@@ -52,21 +53,36 @@ export function ChoroplethMap({
   }, [units]);
 
   return (
-    <div className="relative h-64 overflow-hidden rounded-md border border-slate-200">
+    <div className="relative h-80 overflow-hidden rounded-lg border border-slate-200">
       <MapView
         config={config}
+        attribution={config.boundaries.attribution ? [config.boundaries.attribution] : []}
         onReady={(map) => {
           mapRef.current = map;
           map.addSource("units", { type: "geojson", data: fc as never });
-          map.addLayer({ id: "units-fill", type: "fill", source: "units", paint: { "fill-color": BLUE_RAMP[0], "fill-opacity": 0.75 } });
-          map.addLayer({ id: "units-line", type: "line", source: "units", paint: { "line-color": "#ffffff", "line-width": 2 } });
+          map.addLayer({ id: "units-fill", type: "fill", source: "units", paint: { "fill-color": BLUE_RAMP[0], "fill-opacity": 0.8 } });
+          map.addLayer({ id: "units-line", type: "line", source: "units", paint: { "line-color": "#ffffff", "line-width": 1.5 } });
+          map.addLayer({ id: "units-hover", type: "line", source: "units", paint: { "line-color": "#0B1F3A", "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2.5, 0] } });
           map.on("click", "units-fill", (e) => {
             const id = e.features?.[0]?.properties?.id;
             const unit = unitsRef.current.find((u) => u.id === id);
             if (unit) selectRef.current(unit);
           });
-          map.on("mouseenter", "units-fill", () => (map.getCanvas().style.cursor = "pointer"));
-          map.on("mouseleave", "units-fill", () => (map.getCanvas().style.cursor = ""));
+          let hovered: number | null = null;
+          map.on("mousemove", "units-fill", (e) => {
+            map.getCanvas().style.cursor = "pointer";
+            const id = e.features?.[0]?.id as number | undefined;
+            if (hovered !== null) map.setFeatureState({ source: "units", id: hovered }, { hover: false });
+            hovered = id ?? null;
+            if (hovered !== null) map.setFeatureState({ source: "units", id: hovered }, { hover: true });
+            const name = e.features?.[0]?.properties?.name;
+            map.getCanvas().title = name ? String(name) : "";
+          });
+          map.on("mouseleave", "units-fill", () => {
+            map.getCanvas().style.cursor = "";
+            if (hovered !== null) map.setFeatureState({ source: "units", id: hovered }, { hover: false });
+            hovered = null;
+          });
           update(map);
         }}
       />

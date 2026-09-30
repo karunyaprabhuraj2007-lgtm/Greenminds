@@ -13,24 +13,25 @@ export const STATUS = {
   critical: "#d03b3b",
 };
 
+// Health classes: reserved semantic colours, always shown with a text label.
 export const HEALTH_COLORS: Record<string, string> = {
-  healthy: STATUS.good,
-  moderate: STATUS.warning,
-  severe: STATUS.critical,
+  healthy: "#1B8A2F",
+  moderate: "#D69E2E",
+  severe: "#C53030",
 };
 
 export const HEALTH_LABELS: Record<string, string> = {
   healthy: "Healthy",
-  moderate: "Moderate stress",
-  severe: "Severe stress",
+  moderate: "Moderate",
+  severe: "Stressed",
 };
 
 /** Sequential single-hue ramps (light -> dark). */
 export const BLUE_RAMP = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#184f95"];
 export const ORANGE_RAMP = ["#fde3d6", "#f8b99a", "#f18c60", "#eb6834", "#c24e1f", "#8f3813"];
 export const RED_RAMP = ["#fbdada", "#f3a8a8", "#ea7474", "#e34948", "#b52f2f", "#822020"];
-/** matplotlib "greens" (what the tile server uses for NDVI). */
-export const GREENS_GRADIENT = ["#f7fcf5", "#c7e9c0", "#74c476", "#238b45", "#00441b"];
+/** matplotlib "YlGn" (what the tile server uses for NDVI): sequential, colour-vision-deficiency safe. */
+export const NDVI_GRADIENT = ["#ffffe5", "#d9f0a3", "#78c679", "#238443", "#004529"];
 
 export function cropColor(crop: string | null | undefined, cropOrder: string[]): string {
   if (!crop) return OTHER_GRAY;

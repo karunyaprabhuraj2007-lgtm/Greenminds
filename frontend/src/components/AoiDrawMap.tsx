@@ -14,11 +14,16 @@ export function AoiDrawMap({
   vertices,
   onAdd,
   drawing,
+  context,
+  attribution = [],
 }: {
   config: MapConfig;
   vertices: LngLat[];
   onAdd: (p: LngLat) => void;
   drawing: boolean;
+  /** Admin boundary shown for orientation (e.g. the selected taluka). */
+  context?: GeoJSON.Geometry | null;
+  attribution?: string[];
 }) {
   const mapRef = useRef<MlMap | null>(null);
   const addRef = useRef(onAdd);
@@ -39,6 +44,18 @@ export function AoiDrawMap({
     setData(map, "aoi", { type: "FeatureCollection", features });
   };
 
+  const showContext = (map: MlMap) => {
+    setData(map, "context", context ? { type: "Feature", geometry: context, properties: {} } : { type: "FeatureCollection", features: [] });
+    if (context && !vertices.length) {
+      const coords = JSON.stringify(context).match(/-?\d+\.\d+,-?\d+\.\d+/g)?.map((p) => p.split(",").map(Number)) ?? [];
+      if (coords.length) {
+        const xs = coords.map((c) => c[0]), ys = coords.map((c) => c[1]);
+        fitBBox(map, [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], 30, 14);
+      }
+    }
+  };
+  useEffect(() => { if (mapRef.current) showContext(mapRef.current); }, [context]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -57,10 +74,13 @@ export function AoiDrawMap({
   return (
     <MapView
       config={config}
+      attribution={attribution}
       onReady={(map) => {
         mapRef.current = map;
+        map.addSource("context", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        map.addLayer({ id: "context-line", type: "line", source: "context", paint: { "line-color": "#3A5578", "line-width": 1.5, "line-opacity": 0.8 } });
         map.addSource("aoi", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-        map.addLayer({ id: "aoi-fill", type: "fill", source: "aoi", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#2E7D32", "fill-opacity": 0.15 } });
+        map.addLayer({ id: "aoi-fill", type: "fill", source: "aoi", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#2E7D32", "fill-opacity": 0.18 } });
         map.addLayer({ id: "aoi-line", type: "line", source: "aoi", filter: ["!=", ["geometry-type"], "Point"], paint: { "line-color": "#2E7D32", "line-width": 2.5 } });
         map.addLayer({
           id: "aoi-points", type: "circle", source: "aoi", filter: ["==", ["geometry-type"], "Point"],
@@ -68,7 +88,9 @@ export function AoiDrawMap({
         });
         map.on("click", (e) => drawingRef.current && addRef.current([e.lngLat.lng, e.lngLat.lat]));
         map.doubleClickZoom.disable();
+        map.getCanvas().style.cursor = "crosshair";
         render(map);
+        showContext(map);
       }}
     />
   );

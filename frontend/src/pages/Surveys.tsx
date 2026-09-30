@@ -1,50 +1,48 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { usePage } from "../app/page";
 import type { Page, Survey } from "../app/types";
 import { useApi } from "../app/useApi";
-import { DemoBadge } from "../components/DemoBadge";
+import { Button } from "../components/ui/Button";
+import { StatusChip } from "../components/ui/Chip";
+import { DataTable, type Column } from "../components/ui/DataTable";
+import { EmptyState } from "../components/ui/EmptyState";
+import { SkeletonCard } from "../components/ui/Skeleton";
 import { fmtDate, fmtHa, titleCase } from "../lib/format";
 
-export function Surveys() {
+export default function Surveys() {
+  usePage("Surveys");
   const navigate = useNavigate();
-  const { data, error } = useApi<Page<Survey>>("/api/surveys?page_size=200");
+  const { data, error } = useApi<Page<Survey>>("/api/surveys?page_size=500");
+
+  const columns: Column<Survey>[] = [
+    { key: "name", header: "Survey", value: (s) => s.name, render: (s) => <span className="font-medium text-navy">{s.name}</span> },
+    { key: "date", header: "Survey date", value: (s) => s.survey_date ?? "", render: (s) => <span className="num">{fmtDate(s.survey_date)}</span> },
+    { key: "type", header: "Type", value: (s) => s.type, render: (s) => titleCase(s.type) },
+    { key: "district", header: "District", value: (s) => s.district_name ?? "", render: (s) => s.district_name ?? "–" },
+    { key: "taluka", header: "Taluka", value: (s) => s.taluka_name ?? "", render: (s) => s.taluka_name ?? "–" },
+    { key: "area", header: "Area", align: "right", value: (s) => s.aoi_area_ha, render: (s) => fmtHa(s.aoi_area_ha, 2) },
+    { key: "plots", header: "Plots", align: "right", value: (s) => s.plot_count, render: (s) => s.plot_count.toLocaleString("en-IN") },
+    { key: "s2", header: "Last clear S2", value: (s) => s.last_clear_satellite_date ?? "", render: (s) => <span className="num text-slate-600">{fmtDate(s.last_clear_satellite_date)}</span> },
+    { key: "status", header: "Status", value: (s) => s.status, render: (s) => <StatusChip status={s.status} /> },
+  ];
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-600">Every survey is dated and kept. Older surveys are never overwritten.</p>
-        <Link to="/surveys/new" className="btn-primary">New survey</Link>
+    <div className="mx-auto max-w-[1440px] space-y-4 p-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Surveys</h1>
+          <p className="mt-1 text-sm text-slate-500">Every survey is dated and kept; repeat surveys of an area never overwrite older ones.</p>
+        </div>
+        <Button variant="primary" icon="plus" onClick={() => navigate("/surveys/new")}>New survey</Button>
       </div>
-      {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      <div className="card overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="table-th">Survey</th>
-              <th className="table-th">Date</th>
-              <th className="table-th">Type</th>
-              <th className="table-th">Village</th>
-              <th className="table-th text-right">Area</th>
-              <th className="table-th text-right">Plots</th>
-              <th className="table-th">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {data?.items.map((s) => (
-              <tr key={s.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/surveys/${s.id}`)}>
-                <td className="table-td font-medium text-navy">
-                  {s.name} {s.is_demo && <DemoBadge label="Demo" className="ml-1" />}
-                </td>
-                <td className="table-td whitespace-nowrap">{fmtDate(s.survey_date)}</td>
-                <td className="table-td">{titleCase(s.type)}</td>
-                <td className="table-td">{s.village_name ?? s.district_name ?? "–"}</td>
-                <td className="table-td text-right tabular-nums">{fmtHa(s.aoi_area_ha, 2)}</td>
-                <td className="table-td text-right tabular-nums">{s.plot_count}</td>
-                <td className="table-td capitalize">{s.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {data && !data.items.length && <p className="p-4 text-sm text-slate-500">No surveys yet.</p>}
-      </div>
+      {error && <EmptyState icon="alert" title="Could not load surveys" body={error} />}
+      {!data && !error && <SkeletonCard lines={8} />}
+      {data && (
+        <DataTable rows={data.items} columns={columns} rowKey={(s) => s.id} onRowClick={(s) => navigate(`/surveys/${s.id}`)}
+          filterPlaceholder="Filter by name, district, taluka, status…" initialSort={{ key: "date", dir: "desc" }}
+          empty={<EmptyState icon="surveys" title="No surveys yet" body="Create a survey by drawing or importing the area of interest."
+            action={<Button variant="primary" icon="plus" onClick={() => navigate("/surveys/new")}>Plan your first survey</Button>} />} />
+      )}
     </div>
   );
 }

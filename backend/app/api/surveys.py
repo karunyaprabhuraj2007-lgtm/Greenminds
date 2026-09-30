@@ -50,9 +50,27 @@ class SurveyOut(BaseModel):
     created_by: uuid.UUID | None
     created_at: datetime
     plot_count: int = 0
+    last_clear_satellite_date: date | None = None
 
 
-def survey_out(db: Session, s: Survey, with_geom: bool = False, plot_count: int | None = None) -> SurveyOut:
+def last_clear_dates(db: Session, survey_ids: list[uuid.UUID]) -> dict[uuid.UUID, date]:
+    from app.db.models import SatelliteObservation
+    from app.services.satellite.pipeline import satellite_config
+
+    if not survey_ids:
+        return {}
+    rows = db.execute(
+        select(SatelliteObservation.survey_id, func.max(SatelliteObservation.scene_date))
+        .where(SatelliteObservation.survey_id.in_(survey_ids), SatelliteObservation.plot_id.is_(None),
+               SatelliteObservation.ndvi_mean.is_not(None),
+               SatelliteObservation.clear_fraction >= satellite_config()["min_clear_fraction"])
+        .group_by(SatelliteObservation.survey_id)
+    ).all()
+    return dict(rows)
+
+
+def survey_out(db: Session, s: Survey, with_geom: bool = False, plot_count: int | None = None,
+               last_clear: date | None | bool = False) -> SurveyOut:
     names = {}
     for key, model in (("district", District), ("taluka", Taluka), ("village", Village)):
         unit_id = getattr(s, f"{key}_id")
@@ -65,6 +83,7 @@ def survey_out(db: Session, s: Survey, with_geom: bool = False, plot_count: int 
         aoi_area_ha=s.aoi_area_ha, bbox=bbox(s.aoi), aoi=to_geojson(s.aoi) if with_geom else None,
         survey_date=s.survey_date, season=s.season, notes=s.notes, is_demo=s.is_demo,
         created_by=s.created_by, created_at=s.created_at, plot_count=plot_count,
+        last_clear_satellite_date=last_clear_dates(db, [s.id]).get(s.id) if last_clear is False else last_clear,
     )
 
 
@@ -95,7 +114,8 @@ def list_surveys(
     if status_ is not None:
         stmt = stmt.where(Survey.status == status_)
     rows, total = paginate(db, stmt, params)
-    items = [survey_out(db, s, geometry) for s in rows]
+    clear = last_clear_dates(db, [s.id for s in rows])
+    items = [survey_out(db, s, geometry, last_clear=clear.get(s.id)) for s in rows]
     return Page(items=items, total=total, page=params.page, page_size=params.page_size)
 
 
@@ -248,6 +268,12 @@ def survey_plots(survey_id: uuid.UUID, db: Session = Depends(get_db), user: User
     ids = [p.id for p in plots]
     ai = latest_ai_results(db, ids)
     ver = latest_verifications(db, ids)
+    from app.services.satellite.pipeline import satellite_config
+    from app.services.stats import latest_clear_plot_ndvi
+    from app.services.thresholds import classify_health, load_thresholds
+
+    sat = latest_clear_plot_ndvi(db, ids, satellite_config()["min_clear_fraction"])
+    thresholds = load_thresholds()
     features = []
     for p in plots:
         props: dict[str, Any] = {
@@ -265,6 +291,10 @@ def survey_plots(survey_id: uuid.UUID, db: Session = Depends(get_db), user: User
         ai_demo = ai_props.pop("is_demo", False)
         props.update(ai_props)
         props["is_demo"] = p.is_demo or ai_demo
+        obs = sat.get(p.id)
+        props["sat_ndvi"] = obs.ndvi_mean if obs else None
+        props["sat_date"] = obs.scene_date.isoformat() if obs else None
+        props["sat_health"] = classify_health(obs.ndvi_mean, thresholds).value if obs else None
         features.append({"type": "Feature", "id": str(p.id), "geometry": to_geojson(p.geom), "properties": props})
     return {"type": "FeatureCollection", "features": features, "survey_id": str(survey.id)}
 

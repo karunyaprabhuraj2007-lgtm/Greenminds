@@ -29,12 +29,14 @@ export interface Page<T> {
   page_size: number;
 }
 
+export type BBox = [number, number, number, number];
+
 export interface AdminUnit {
   id: string;
   name: string;
   parent_id: string | null;
   is_demo: boolean;
-  bbox: [number, number, number, number] | null;
+  bbox: BBox | null;
   geometry?: GeoJSON.Geometry | null;
 }
 
@@ -52,7 +54,6 @@ export interface AuditEntry {
 
 export type HealthClass = "healthy" | "moderate" | "severe";
 export type SurveyStatus = "draft" | "planned" | "flying" | "uploaded" | "processing" | "processed" | "verified" | "archived";
-export type BBox = [number, number, number, number];
 
 export interface Survey {
   id: string;
@@ -75,25 +76,29 @@ export interface Survey {
   created_by: string | null;
   created_at: string;
   plot_count: number;
+  last_clear_satellite_date: string | null;
+}
+
+export interface SurveyWrite extends Survey {
+  warnings: string[];
 }
 
 export interface PlotProps {
   id: string;
   plot_code: string;
   area_ha: number | null;
+  parcel_ref: string | null;
+  source: string | null;
   is_candidate: boolean;
   is_demo: boolean;
   verification_status: string;
   has_ai_result: boolean;
   crop_pred?: string | null;
   crop_confidence?: number | null;
-  ndvi_mean?: number | null;
-  ndvi_p10?: number | null;
-  ndvi_p90?: number | null;
   health_class?: HealthClass | null;
-  stress_pct?: number | null;
-  damage_pct?: number | null;
-  model_version?: string | null;
+  sat_ndvi: number | null;
+  sat_date: string | null;
+  sat_health: HealthClass | null;
 }
 
 export interface Feature<G, P> {
@@ -108,19 +113,6 @@ export interface FeatureCollection<G, P> {
   features: Feature<G, P>[];
 }
 
-export interface AiResult {
-  crop_pred: string | null;
-  crop_confidence: number | null;
-  ndvi_mean: number | null;
-  ndvi_p10: number | null;
-  ndvi_p90: number | null;
-  health_class: HealthClass | null;
-  stress_pct: number | null;
-  damage_pct: number | null;
-  model_version: string | null;
-  is_demo: boolean;
-}
-
 export interface PlotDetail {
   id: string;
   plot_code: string;
@@ -132,47 +124,65 @@ export interface PlotDetail {
   geometry: GeoJSON.Polygon;
   bbox: BBox;
   survey: { id: string; name: string; survey_date: string | null; status: string; is_demo: boolean };
-  ai_result: AiResult | null;
+  ai_result: null | { crop_pred: string | null; crop_confidence: number | null; health_class: HealthClass | null; model_version: string | null };
   verification: {
     status: string;
     count: number;
-    latest: null | {
-      actual_crop: string | null;
-      crop_stage: string | null;
-      health_class: HealthClass | null;
-      damage_pct: number | null;
-      decision: string | null;
-      verified_at: string | null;
-      photo_count: number;
-    };
+    latest: null | { actual_crop: string | null; health_class: HealthClass | null; decision: string | null; verified_at: string | null; photo_count: number };
   };
 }
 
-export interface TimelinePoint {
-  survey_id: string;
-  survey_name: string;
-  survey_date: string | null;
-  plot_id: string;
-  plot_code: string;
-  ndvi_mean: number | null;
-  health_class: HealthClass | null;
-  crop_pred: string | null;
-  is_demo: boolean;
-}
-
-export interface RasterInfo {
+export interface Job {
   id: string;
   kind: string;
-  tiles_url: string | null;
-  bounds: BBox | null;
-  gsd_cm: number | null;
-  stats: Record<string, number | string> | null;
-  legend: string | null;
-  rescale: [number, number] | null;
-  colormap_name: string | null;
-  is_demo: boolean;
-  calibrated: boolean;
+  status: "queued" | "running" | "done" | "failed";
+  progress: number;
+  log: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
+
+export interface NdviPoint {
+  date: string;
+  scene_id: string;
+  platform: string | null;
+  scene_cloud_pct: number | null;
+  clear_fraction: number;
+  valid_pixels: number;
+  ndvi_mean: number | null;
+  ndvi_p10: number | null;
+  ndvi_p90: number | null;
+}
+
+export interface SatelliteSeries {
+  source: string;
+  attribution: string;
+  licence?: string;
+  stac_url?: string;
+  min_clear_fraction: number;
+  series: NdviPoint[];
+  scenes_total?: number;
+  scenes_clear?: number;
+  latest_clear: NdviPoint | null;
+  layer?: null | { id: string; tiles_url: string | null; scene_id: string | null; acquired_at: string | null; cloud_cover: number | null; attribution: string | null };
+  job?: Job | null;
+}
+
+export interface WeatherDay { day: string; precip_mm: number | null; tmax_c: number | null; tmin_c: number | null; source: "archive" | "forecast" }
+
+export interface WeatherResponse {
+  source: string;
+  attribution: string;
+  licence: string;
+  days: WeatherDay[];
+  totals: { rain_mm_last_90d: number | null; rain_mm_last_30d: number | null };
+  fetched_at: string | null;
+  job: Job | null;
+}
+
+export interface RefreshResponse { cached: boolean; running: boolean; job: Job }
 
 export type Level = "state" | "district" | "taluka" | "village";
 
@@ -183,33 +193,40 @@ export interface SummaryChild {
   is_demo: boolean;
   surveys?: number;
   surveyed_area_ha?: number;
-  fields_analysed?: number;
+  plots_mapped?: number;
   healthy_pct?: number | null;
-  contains_demo?: boolean;
   bbox: BBox | null;
   geometry?: GeoJSON.MultiPolygon | null;
   survey_date?: string | null;
   status?: SurveyStatus;
+  aoi_area_ha?: number | null;
 }
 
 export interface DashboardSummary {
   level: Level;
+  empty: boolean;
   unit: { id: string; name: string; is_demo: boolean; bbox: BBox | null; geometry?: GeoJSON.MultiPolygon | null } | null;
   path: { level: Level; id: string; name: string; bbox: BBox | null }[];
   cards: {
-    total_surveyed_area_ha: number;
+    surveys_total: number;
     active_surveys: number;
     completed_surveys: number;
-    fields_analysed: number;
-    analysed_area_ha: number;
+    total_surveyed_area_ha: number;
+    plots_mapped: number;
+    plots_area_ha: number;
+    field_verifications: number;
+    pending_verifications: number;
+    satellite_monitored_surveys: number;
+    last_clear_satellite_date: string | null;
+    health_assessed_plots: number;
     healthy_pct: number | null;
     stress_pct: number | null;
-    possible_damage_pct: number | null;
-    pending_verifications: number;
   };
-  crop_distribution: { crop: string; area_ha: number; plots: number; pct: number | null }[];
   health: { health_class: HealthClass; area_ha: number; plots: number; pct: number | null }[];
+  health_basis: { source: string; as_of: string | null; description: string };
+  crop_distribution: { crop: string; area_ha: number; plots: number; pct: number | null }[];
   verification_funnel: { stage: string; label: string; plots: number }[];
+  trends: { surveys_per_month: { month: string; value: number }[]; ndvi_monthly_mean: { month: string; value: number | null }[] };
   basis: { survey_ids: string[]; description: string };
   contains_demo: boolean;
   children: SummaryChild[];
@@ -239,18 +256,21 @@ export interface Alert {
   created_at: string;
 }
 
+export interface DatasetInfo {
+  key: string; name: string; provider: string; original_source: string | null; licence: string; url: string | null; version: string | null; attribution: string;
+}
+
 export interface MapConfig {
   basemap: { tiles_url: string; attribution: string };
+  basemaps: { light: { tiles_url: string; attribution: string }; dark: { tiles_url: string; attribution: string } };
+  boundaries: { attribution: string | null; datasets: DatasetInfo[] };
   satellite: { tiles_url: string | null; attribution: string };
+  satellite_source: { name: string; attribution: string; licence: string; stac_url: string };
   tile_server_url: string;
   crops: string[];
   raster_styles: Record<string, { rescale?: [number, number]; colormap_name?: string; legend?: string }>;
   initial_view: { center: [number, number]; zoom: number };
   health_thresholds: { ndvi_healthy_min: number; ndvi_moderate_min: number };
-}
-
-export interface SurveyWrite extends Survey {
-  warnings: string[];
 }
 
 export interface Mission {
@@ -261,26 +281,14 @@ export interface Mission {
   altitude_m: number;
   front_overlap: number;
   side_overlap: number;
-  speed_ms: number | null;
-  heading_deg: number | null;
   gsd_cm: number | null;
-  est_images: number | null;
-  est_flights: number | null;
-  est_area_ha: number | null;
   status: "draft" | "ready" | "authorized" | "in_flight" | "completed" | "cancelled";
   authorized_by: string | null;
   authorized_at: string | null;
   created_at: string;
 }
 
-export interface ChecklistItem {
-  key: string;
-  label: string;
-  telemetry: string | null;
-  ok: boolean;
-  value: string | null;
-  checked_at: string | null;
-}
+export interface ChecklistItem { key: string; label: string; telemetry: string | null; ok: boolean; value: string | null; checked_at: string | null }
 
 export interface ChecklistState {
   mission_id: string;
@@ -293,9 +301,4 @@ export interface ChecklistState {
   authorized_at: string | null;
 }
 
-export interface DefaultAoi {
-  source: string;
-  geometry: GeoJSON.Polygon;
-  area_ha: number;
-  bbox: BBox;
-}
+export interface InputAoi { source: string; geometry?: GeoJSON.Polygon; area_ha?: number; bbox?: BBox; error?: string }

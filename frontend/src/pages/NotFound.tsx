@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
+import { usePage } from "../app/page";
+import { EmptyState } from "../components/ui/EmptyState";
 
-export function NotFound() {
+export default function NotFound() {
+  usePage("Page not found");
   return (
-    <div className="card max-w-lg p-6">
-      <h2 className="text-lg font-semibold text-navy">Page not found</h2>
-      <p className="mt-2 text-sm text-slate-600">This page does not exist or your role does not have access to it.</p>
-      <Link to="/" className="btn-secondary mt-4">Go to start page</Link>
+    <div className="p-6">
+      <div className="card"><EmptyState icon="map" title="Page not found" body="This page does not exist, or your role does not have access to it."
+        action={<Link to="/" className="text-sm font-medium text-navy-600 hover:underline">Go to start page</Link>} /></div>
     </div>
   );
 }

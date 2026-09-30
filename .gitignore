@@ -15,3 +15,7 @@ frontend/dist/
 *.log
 .DS_Store
 data/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

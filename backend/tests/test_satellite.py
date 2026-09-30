@@ -161,3 +161,15 @@ def test_stac_failure_marks_job_failed(client, tokens, world, monkeypatch):
 def test_satellite_permissions(client, tokens, world):
     assert client.post(f"/api/surveys/{world['new']['id']}/satellite/refresh", headers=auth_header(tokens, VERIFIER)).status_code == 403
     assert client.get(f"/api/surveys/{world['nashik']}/satellite", headers=auth_header(tokens, OFFICER)).status_code == 404
+
+
+def test_plot_geojson_and_survey_carry_latest_clear_ndvi(client, tokens, world, satellite_world):
+    h = auth_header(tokens, OFFICER)
+    fc = client.get(f"/api/surveys/{world['new']['id']}/plots", headers=h).json()
+    p1 = fc["features"][0]["properties"]
+    assert p1["sat_date"] == "2026-06-10" and p1["sat_health"] == "moderate"
+    assert p1["sat_ndvi"] == pytest.approx(NDVI_PLOT, abs=1e-3)
+    s = client.get(f"/api/surveys/{world['new']['id']}", headers=h).json()
+    assert s["last_clear_satellite_date"] == "2026-06-10"
+    listed = next(x for x in client.get("/api/surveys", headers=h).json()["items"] if x["id"] == world["new"]["id"])
+    assert listed["last_clear_satellite_date"] == "2026-06-10"

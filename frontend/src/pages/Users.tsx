@@ -1,117 +1,106 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { get, patch, post } from "../app/api";
+import { useState } from "react";
+import { patch, post } from "../app/api";
+import { useAuth } from "../app/auth";
+import { usePage } from "../app/page";
 import { ROLE_LABELS, type AdminUnit, type Page, type Role, type User } from "../app/types";
-import { DemoBadge } from "../components/DemoBadge";
+import { useApi } from "../app/useApi";
+import { Button } from "../components/ui/Button";
+import { Chip } from "../components/ui/Chip";
+import { useConfirm } from "../components/ui/Confirm";
+import { DataTable, type Column } from "../components/ui/DataTable";
+import { Dialog } from "../components/ui/Dialog";
+import { Field } from "../components/ui/Field";
+import { SkeletonCard } from "../components/ui/Skeleton";
+import { useToast } from "../components/ui/Toast";
 
 const ROLES = Object.keys(ROLE_LABELS) as Role[];
+const EMPTY_FORM = { name: "", email: "", password: "", role: "drone_operator" as Role, district_id: "" };
 
-export function Users() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [districts, setDistricts] = useState<AdminUnit[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "drone_operator" as Role, district_id: "" });
+export default function Users() {
+  usePage("Users", [{ label: "Administration" }, { label: "Users" }]);
+  const { user: me } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const users = useApi<Page<User>>("/api/users?page_size=500");
+  const districts = useApi<Page<AdminUnit>>("/api/admin-units/districts?page_size=100");
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const districtName = (id: string | null) => districts.data?.items.find((d) => d.id === id)?.name ?? "–";
 
-  const load = () =>
-    get<Page<User>>("/api/users?page_size=200").then((p) => setUsers(p.items)).catch((e) => setError(e.message));
+  const errors = {
+    name: !form.name.trim() ? "Required" : null,
+    email: !/^\S+@\S+\.\S+$/.test(form.email) ? "Enter a valid email" : null,
+    password: form.password.length < 8 ? "At least 8 characters" : null,
+    district: form.role === "district_officer" && !form.district_id ? "District officers need a district" : null,
+  };
+  const valid = !Object.values(errors).some(Boolean);
 
-  useEffect(() => {
-    load();
-    get<Page<AdminUnit>>("/api/admin-units/districts").then((p) => setDistricts(p.items)).catch(() => {});
-  }, []);
-
-  const districtName = (id: string | null) => districts.find((d) => d.id === id)?.name ?? "-";
-
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
+  const create = async () => {
+    setTouched(true);
+    if (!valid) return;
+    setBusy(true);
     try {
       await post<User>("/api/users", { ...form, district_id: form.district_id || null });
-      setForm({ name: "", email: "", password: "", role: "drone_operator", district_id: "" });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create user");
+      toast({ tone: "success", title: "User created", body: form.email });
+      setOpen(false);
+      setForm(EMPTY_FORM);
+      setTouched(false);
+      users.reload();
+    } catch (e) {
+      toast({ tone: "error", title: "Could not create user", body: (e as Error).message });
+    } finally {
+      setBusy(false);
     }
-  }
+  };
 
-  async function toggleActive(u: User) {
-    setError(null);
+  const toggle = async (u: User) => {
+    if (u.active && !(await confirm({ title: `Deactivate ${u.name}?`, body: "They will be signed out and cannot sign in until reactivated.", confirmLabel: "Deactivate", danger: true }))) return;
     try {
-      await patch<User>(`/api/users/${u.id}`, { active: !u.active });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
+      await patch(`/api/users/${u.id}`, { active: !u.active });
+      toast({ tone: "success", title: u.active ? "User deactivated" : "User activated" });
+      users.reload();
+    } catch (e) {
+      toast({ tone: "error", title: "Update failed", body: (e as Error).message });
     }
-  }
+  };
 
+  const columns: Column<User>[] = [
+    { key: "name", header: "Name", value: (u) => u.name, render: (u) => <span className="font-medium text-navy">{u.name}</span> },
+    { key: "email", header: "Email", value: (u) => u.email, render: (u) => u.email },
+    { key: "role", header: "Role", value: (u) => ROLE_LABELS[u.role], render: (u) => ROLE_LABELS[u.role] },
+    { key: "district", header: "District", value: (u) => districtName(u.district_id), render: (u) => districtName(u.district_id) },
+    { key: "status", header: "Status", value: (u) => (u.active ? "active" : "inactive"), render: (u) => <Chip tone={u.active ? "success" : "neutral"}>{u.active ? "Active" : "Inactive"}</Chip> },
+    { key: "account", header: "Account", value: (u) => (u.is_demo ? "demo" : ""), render: (u) => (u.is_demo ? <Chip tone="warning">Demo account</Chip> : null) },
+    { key: "actions", header: "", render: (u) => u.id === me?.id ? null : (
+      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); toggle(u); }}>{u.active ? "Deactivate" : "Activate"}</Button>) },
+  ];
+
+  const set = (p: Partial<typeof form>) => setForm((f) => ({ ...f, ...p }));
   return (
-    <div className="space-y-6">
-      {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      <div className="card overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="table-th">Name</th>
-              <th className="table-th">Email</th>
-              <th className="table-th">Role</th>
-              <th className="table-th">District</th>
-              <th className="table-th">Status</th>
-              <th className="table-th" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td className="table-td font-medium">
-                  {u.name} {u.is_demo && <DemoBadge label="Demo" className="ml-1" />}
-                </td>
-                <td className="table-td">{u.email}</td>
-                <td className="table-td">{ROLE_LABELS[u.role]}</td>
-                <td className="table-td">{districtName(u.district_id)}</td>
-                <td className="table-td">
-                  <span className={u.active ? "text-leaf" : "text-slate-400"}>{u.active ? "Active" : "Inactive"}</span>
-                </td>
-                <td className="table-td text-right">
-                  <button className="text-xs font-medium text-navy hover:underline" onClick={() => toggleActive(u)}>
-                    {u.active ? "Deactivate" : "Activate"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="mx-auto max-w-[1440px] space-y-4 p-6">
+      <div className="flex items-end justify-between gap-4">
+        <div><h1 className="text-xl font-semibold tracking-tight">Users</h1><p className="mt-1 text-sm text-slate-500">Accounts, roles and district assignments. Changes are audit-logged.</p></div>
+        <Button variant="primary" icon="plus" onClick={() => setOpen(true)}>Add user</Button>
       </div>
-
-      <form onSubmit={create} className="card grid max-w-3xl gap-4 p-5 sm:grid-cols-2">
-        <h2 className="text-sm font-semibold text-navy sm:col-span-2">Add user</h2>
-        <div>
-          <label className="label" htmlFor="u-name">Name</label>
-          <input id="u-name" className="input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      {!users.data ? <SkeletonCard lines={6} /> : <DataTable rows={users.data.items} columns={columns} rowKey={(u) => u.id} filterPlaceholder="Filter users…" initialSort={{ key: "name", dir: "asc" }} />}
+      <Dialog open={open} onClose={() => setOpen(false)} title="Add user" width="max-w-lg"
+        footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" loading={busy} onClick={create}>Create user</Button></>}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field id="u-name" label="Full name" required error={touched ? errors.name : null}><input id="u-name" className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} /></Field>
+          <Field id="u-email" label="Email" required error={touched ? errors.email : null}><input id="u-email" type="email" className="input" value={form.email} onChange={(e) => set({ email: e.target.value })} /></Field>
+          <Field id="u-pass" label="Initial password" required error={touched ? errors.password : null}><input id="u-pass" type="password" className="input" value={form.password} onChange={(e) => set({ password: e.target.value })} /></Field>
+          <Field id="u-role" label="Role"><select id="u-role" className="input" value={form.role} onChange={(e) => set({ role: e.target.value as Role })}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}</select></Field>
+          <div className="sm:col-span-2">
+            <Field id="u-district" label="District" error={touched ? errors.district : null} hint="Limits what district officers see">
+              <select id="u-district" className="input" value={form.district_id} onChange={(e) => set({ district_id: e.target.value })}>
+                <option value="">None (state-wide)</option>{districts.data?.items.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
+          </div>
         </div>
-        <div>
-          <label className="label" htmlFor="u-email">Email</label>
-          <input id="u-email" type="email" className="input" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </div>
-        <div>
-          <label className="label" htmlFor="u-pass">Initial password (min 8)</label>
-          <input id="u-pass" type="password" minLength={8} className="input" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-        </div>
-        <div>
-          <label className="label" htmlFor="u-role">Role</label>
-          <select id="u-role" className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
-            {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="u-district">District {form.role === "district_officer" && "(required)"}</label>
-          <select id="u-district" className="input" value={form.district_id} onChange={(e) => setForm({ ...form, district_id: e.target.value })}>
-            <option value="">-</option>
-            {districts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </div>
-        <div className="flex items-end">
-          <button type="submit" className="btn-primary">Create user</button>
-        </div>
-      </form>
+      </Dialog>
     </div>
   );
 }
