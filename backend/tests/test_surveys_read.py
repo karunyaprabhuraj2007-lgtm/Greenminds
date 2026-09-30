@@ -1,6 +1,6 @@
 import uuid
 
-from tests.conftest import ADMIN, OFFICER, OPERATOR, VERIFIER, auth_header
+from tests.conftest import latest_demo_survey_id, ADMIN, OFFICER, OPERATOR, VERIFIER, auth_header
 
 
 def _names(client, tokens, email, qs=""):
@@ -13,9 +13,10 @@ def test_scope_by_role(client, tokens, nashik_survey):
     admin = _names(client, tokens, ADMIN)
     assert "Nashik test survey" in admin and len(admin) >= 3
     officer = _names(client, tokens, OFFICER)
-    assert "Nashik test survey" not in officer and len(officer) == 2
+    assert "Nashik test survey" not in officer and len([n for n in officer if "(demo)" in n]) == 2
     operator = _names(client, tokens, OPERATOR)
-    assert "Nashik test survey" not in operator and len(operator) == 2  # demo surveys created by operator
+    assert "Nashik test survey" not in operator
+    assert len([n for n in operator if "(demo)" in n]) == 2  # demo surveys are created by the operator
     assert _names(client, tokens, VERIFIER) == []
 
 
@@ -34,7 +35,7 @@ def test_list_is_newest_first_and_filterable(client, tokens, nashik_survey):
 
 def test_get_survey_with_aoi(client, tokens):
     h = auth_header(tokens, OFFICER)
-    sid = client.get("/api/surveys", headers=h).json()["items"][0]["id"]
+    sid = latest_demo_survey_id(client, h)
     body = client.get(f"/api/surveys/{sid}", headers=h).json()
     assert body["aoi"]["type"] == "Polygon"
     assert body["aoi_area_ha"] > 20
@@ -47,7 +48,7 @@ def test_survey_not_visible_is_404(client, tokens, nashik_survey):
 
 def test_survey_plots_geojson(client, tokens):
     h = auth_header(tokens, OFFICER)
-    sid = client.get("/api/surveys", headers=h).json()["items"][0]["id"]
+    sid = latest_demo_survey_id(client, h)
     fc = client.get(f"/api/surveys/{sid}/plots", headers=h).json()
     assert fc["type"] == "FeatureCollection" and len(fc["features"]) == 12
     props = fc["features"][0]["properties"]
@@ -60,7 +61,7 @@ def test_survey_plots_geojson(client, tokens):
 
 def test_survey_rasters(client, tokens):
     h = auth_header(tokens, OFFICER)
-    sid = client.get("/api/surveys", headers=h).json()["items"][0]["id"]
+    sid = latest_demo_survey_id(client, h)
     rasters = client.get(f"/api/surveys/{sid}/rasters", headers=h).json()
     ndvi = next(r for r in rasters if r["kind"] == "ndvi")
     assert ndvi["is_demo"] is True and ndvi["calibrated"] is False

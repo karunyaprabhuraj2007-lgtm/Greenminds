@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from tests.conftest import ADMIN, OFFICER, VERIFIER, auth_header
+from tests.conftest import latest_demo_survey_id, ADMIN, OFFICER, VERIFIER, auth_header
 
 
 def _tile_xy(lon, lat, z):
@@ -15,7 +15,7 @@ def _tile_xy(lon, lat, z):
 @pytest.fixture()
 def ndvi_url(client, tokens):
     h = auth_header(tokens, OFFICER)
-    sid = client.get("/api/surveys", headers=h).json()["items"][0]["id"]
+    sid = latest_demo_survey_id(client, h)
     return next(r for r in client.get(f"/api/surveys/{sid}/rasters", headers=h).json() if r["kind"] == "ndvi")["tiles_url"]
 
 

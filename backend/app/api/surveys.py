@@ -6,18 +6,22 @@ from datetime import date, datetime
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.pagination import page_params, paginate
 from app.api.schemas import Page, PageParams
 from app.core.config import get_settings, load_yaml_config
-from app.core.deps import get_current_user
-from app.db.models import District, Plot, Raster, Survey, SurveyStatus, SurveyType, Taluka, User, Village
+from app.core.audit import record_audit, snapshot
+from app.core.deps import get_current_user, require_capability
+from app.core.permissions import Capability
+from app.db.models import District, Plot, Raster, Role, Survey, SurveyStatus, SurveyType, Taluka, User, Village
 from app.db.session import get_db
-from app.services.geo import bbox, to_geojson, to_shapely
+from app.services.aoi_io import AoiError, polygon_from_geojson, validate_aoi
+from app.services.geo import SRID, bbox, geodesic_area_ha, to_geojson, to_shapely
+from app.services.thresholds import load_thresholds
 from app.services.plot_data import ai_result_dict, latest_ai_results, latest_verifications, verification_status
 from app.services.scope import get_visible_survey, scope_surveys
 from app.services.stats import aggregate
@@ -93,6 +97,142 @@ def list_surveys(
     rows, total = paginate(db, stmt, params)
     items = [survey_out(db, s, geometry) for s in rows]
     return Page(items=items, total=total, page=params.page, page_size=params.page_size)
+
+
+class SurveyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    type: SurveyType = SurveyType.crop_survey
+    district_id: uuid.UUID
+    taluka_id: uuid.UUID | None = None
+    village_id: uuid.UUID | None = None
+    aoi: dict[str, Any]
+    survey_date: date | None = None
+    season: str | None = Field(default=None, max_length=40)
+    notes: str | None = None
+
+
+class SurveyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    type: SurveyType | None = None
+    taluka_id: uuid.UUID | None = None
+    village_id: uuid.UUID | None = None
+    aoi: dict[str, Any] | None = None
+    survey_date: date | None = None
+    season: str | None = Field(default=None, max_length=40)
+    notes: str | None = None
+    status: SurveyStatus | None = Field(default=None, description="Only 'archived' can be set directly")
+
+
+class SurveyWriteOut(SurveyOut):
+    warnings: list[str] = []
+
+
+# Once a survey has flown, its AOI is part of the dated record and is frozen.
+AOI_EDITABLE = (SurveyStatus.draft, SurveyStatus.planned)
+
+
+def _parse_aoi(data: dict[str, Any]):
+    try:
+        poly = validate_aoi(polygon_from_geojson(data))
+    except (AoiError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid AOI: {exc}") from None
+    area = geodesic_area_ha(poly)
+    max_ha = load_thresholds().get("survey", {}).get("max_aoi_area_ha", 2000)
+    if area > max_ha:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"AOI is {area:.0f} ha; the maximum per survey is {max_ha} ha. Split it into several surveys.",
+        )
+    return poly, area
+
+
+def _check_units(db: Session, user: User, district_id, taluka_id, village_id) -> tuple[District, Taluka | None, Village | None]:
+    district = db.get(District, district_id)
+    if district is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown district_id")
+    if user.role != Role.state_admin and user.district_id and district.id != user.district_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only create surveys in your own district")
+    taluka = db.get(Taluka, taluka_id) if taluka_id else None
+    if taluka_id and (taluka is None or taluka.district_id != district.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "taluka_id does not belong to the district")
+    village = db.get(Village, village_id) if village_id else None
+    if village_id and (village is None or taluka is None or village.taluka_id != taluka.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "village_id does not belong to the taluka")
+    return district, taluka, village
+
+
+def _containment_warnings(poly, district, taluka, village) -> list[str]:
+    for unit, label in ((village, "village"), (taluka, "taluka"), (district, "district")):
+        if unit is not None and unit.geom is not None:
+            if not to_shapely(unit.geom).contains(poly):
+                note = " (demo boundaries are simplified)" if unit.is_demo else ""
+                return [f"AOI is not fully inside the selected {label} boundary{note}."]
+            return []
+    return []
+
+
+@router.post("", response_model=SurveyWriteOut, status_code=status.HTTP_201_CREATED)
+def create_survey(
+    body: SurveyCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_capability(Capability.create_survey)),
+) -> SurveyWriteOut:
+    from geoalchemy2.shape import from_shape
+
+    poly, area = _parse_aoi(body.aoi)
+    district, taluka, village = _check_units(db, user, body.district_id, body.taluka_id, body.village_id)
+    survey = Survey(
+        name=body.name, type=body.type, district_id=district.id,
+        taluka_id=taluka.id if taluka else None, village_id=village.id if village else None,
+        aoi=from_shape(poly, srid=SRID), aoi_area_ha=round(area, 3), status=SurveyStatus.draft,
+        created_by=user.id, survey_date=body.survey_date, season=body.season, notes=body.notes,
+        is_demo=False,
+    )
+    db.add(survey)
+    db.flush()
+    record_audit(db, user_id=user.id, action="create", entity="survey", entity_id=survey.id,
+                 after=snapshot(survey), request=request)
+    db.commit()
+    out = survey_out(db, survey, with_geom=True, plot_count=0).model_dump()
+    return SurveyWriteOut(**out, warnings=_containment_warnings(poly, district, taluka, village))
+
+
+@router.patch("/{survey_id}", response_model=SurveyWriteOut)
+def update_survey(
+    survey_id: uuid.UUID,
+    body: SurveyUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_capability(Capability.create_survey)),
+) -> SurveyWriteOut:
+    from geoalchemy2.shape import from_shape
+
+    survey = require_survey(db, user, survey_id)
+    changes = body.model_dump(exclude_unset=True)
+    if "status" in changes and changes["status"] not in (SurveyStatus.archived, survey.status):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only 'archived' can be set directly; other statuses follow the workflow")
+    if "aoi" in changes and survey.status not in AOI_EDITABLE:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The AOI of a survey that has flown cannot be changed; create a new survey")
+    before = snapshot(survey)
+    warnings: list[str] = []
+    if "taluka_id" in changes or "village_id" in changes:
+        _check_units(db, user, survey.district_id, changes.get("taluka_id", survey.taluka_id),
+                     changes.get("village_id", survey.village_id))
+    if "aoi" in changes:
+        poly, area = _parse_aoi(changes.pop("aoi"))
+        survey.aoi = from_shape(poly, srid=SRID)
+        survey.aoi_area_ha = round(area, 3)
+        d, t, v = _check_units(db, user, survey.district_id, changes.get("taluka_id", survey.taluka_id),
+                               changes.get("village_id", survey.village_id))
+        warnings = _containment_warnings(poly, d, t, v)
+    for key, value in changes.items():
+        setattr(survey, key, value)
+    db.flush()
+    record_audit(db, user_id=user.id, action="update", entity="survey", entity_id=survey.id,
+                 before=before, after=snapshot(survey), request=request)
+    db.commit()
+    return SurveyWriteOut(**survey_out(db, survey, with_geom=True).model_dump(), warnings=warnings)
 
 
 @router.get("/{survey_id}", response_model=SurveyOut)

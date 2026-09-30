@@ -29,6 +29,7 @@ x-backend-env: &backend-env
   DEMO_PASSWORD: ${DEMO_PASSWORD:-GreenMinds@2026}
   CONFIG_DIR: /config
   DATA_DIR: /data
+  INPUTS_DIR: /inputs
   TILE_SERVER_URL: ${TILE_SERVER_URL:-/api/tiles}
   BASEMAP_TILES_URL: ${BASEMAP_TILES_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
   BASEMAP_ATTRIBUTION: ${BASEMAP_ATTRIBUTION:-© OpenStreetMap contributors}
@@ -86,6 +87,7 @@ services:
     ports: ["8000:8000"]
     volumes:
       - ./config:/config:ro
+      - ./inputs:/inputs:ro
       - gm-data:/data
     depends_on:
       db: { condition: service_healthy }

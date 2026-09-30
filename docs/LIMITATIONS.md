@@ -91,6 +91,35 @@ spec was ambiguous or not possible and a simpler option was chosen.
   `SATELLITE_TILES_URL` is set.
 - **Before/after slider and "Compare surveys"** are Phase 8; the button is shown disabled.
 
+## Phase 3 (in progress)
+
+- **Flight planner not integrated yet.** `greenminds_core_modules.zip` (flight planner,
+  QGC / Mission Planner exporters, indices module and their tests) and the `inputs/`
+  field polygon were not in the repository when Phase 3 started (no `main` branch on
+  GitHub). Per instructions the planner math is not rewritten here. Still to do once the
+  module is available: `POST /api/flightplan/generate`, mission creation
+  (`POST /api/surveys/{id}/missions`), live GSD / image / flight estimates and flight-line
+  preview in the wizard, and the `.plan` / `.waypoints` exports (one file per flight).
+- **Survey rules.** A new survey starts as `draft`. Its AOI can be edited only while
+  `draft` or `planned`; after a flight the AOI is part of the dated record and is frozen
+  (create a new survey instead). Status can only be set to `archived` directly; other
+  statuses follow the workflow. AOIs over `survey.max_aoi_area_ha` (default 2000 ha) are
+  rejected. An AOI outside the selected village/taluka/district is accepted with a
+  warning, because the demo boundaries are simplified rectangles.
+- **Who may create surveys.** State admins anywhere; district officers and drone operators
+  only in their own district (when they have one).
+- **Pre-flight checklist** items come from `config/preflight.yaml`. Every submission is kept
+  (history); the latest entry per item counts. When all items are OK the mission becomes
+  `ready`. Only state admins and district officers can AUTHORIZE; drone operators can
+  *request* authorization, which creates an alert for officers. Marking any item not-OK
+  after authorization revokes it (audit action `authorization_revoked`). Auto-filling items
+  from live telemetry is Phase 4.
+- **Wizard AOI drawing** is click-to-add-vertex with Undo / Clear (no vertex dragging) to
+  avoid adding a drawing library. The live area is a spherical estimate; the stored
+  area is geodesic (they agree to within about 1%).
+- **Bug fixed during Phase 3:** `geodesic_area_ha` now re-orients polygon rings before
+  measuring, so holes are subtracted whatever their winding order (known-answer tests added).
+
 ## Open tasks carried forward
 
 - **Phase 5:** test large multi-file uploads (hundreds of 5-10 MB Survey3 images) against the

@@ -248,3 +248,54 @@ export interface MapConfig {
   initial_view: { center: [number, number]; zoom: number };
   health_thresholds: { ndvi_healthy_min: number; ndvi_moderate_min: number };
 }
+
+export interface SurveyWrite extends Survey {
+  warnings: string[];
+}
+
+export interface Mission {
+  id: string;
+  survey_id: string;
+  camera_profile: string;
+  aircraft_profile: string;
+  altitude_m: number;
+  front_overlap: number;
+  side_overlap: number;
+  speed_ms: number | null;
+  heading_deg: number | null;
+  gsd_cm: number | null;
+  est_images: number | null;
+  est_flights: number | null;
+  est_area_ha: number | null;
+  status: "draft" | "ready" | "authorized" | "in_flight" | "completed" | "cancelled";
+  authorized_by: string | null;
+  authorized_at: string | null;
+  created_at: string;
+}
+
+export interface ChecklistItem {
+  key: string;
+  label: string;
+  telemetry: string | null;
+  ok: boolean;
+  value: string | null;
+  checked_at: string | null;
+}
+
+export interface ChecklistState {
+  mission_id: string;
+  status: Mission["status"];
+  items: ChecklistItem[];
+  all_ok: boolean;
+  can_authorize: boolean;
+  authorize_enabled: boolean;
+  authorized_by: string | null;
+  authorized_at: string | null;
+}
+
+export interface DefaultAoi {
+  source: string;
+  geometry: GeoJSON.Polygon;
+  area_ha: number;
+  bbox: BBox;
+}

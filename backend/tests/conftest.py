@@ -101,3 +101,9 @@ def nashik_survey():
         db.add(survey)
         db.commit()
         return survey.id
+
+
+def latest_demo_survey_id(client: TestClient, headers: dict[str, str]) -> str:
+    """Newest seeded demo survey visible to the caller (other tests add surveys)."""
+    items = client.get("/api/surveys?page_size=500", headers=headers).json()["items"]
+    return next(s["id"] for s in items if s["is_demo"])

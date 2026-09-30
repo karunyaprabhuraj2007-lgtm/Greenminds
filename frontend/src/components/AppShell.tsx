@@ -7,7 +7,7 @@ import { TopBar } from "./TopBar";
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
-  const title = NAV_ITEMS.find((i) => i.to === pathname)?.label ?? "GreenMinds";
+  const title = NAV_ITEMS.find((i) => i.to === pathname)?.label ?? (pathname.startsWith("/surveys/") ? "Survey" : "GreenMinds");
 
   return (
     <div className="flex h-full">

@@ -1,9 +1,9 @@
-from tests.conftest import ADMIN, OFFICER, VERIFIER, auth_header
+from tests.conftest import latest_demo_survey_id, ADMIN, OFFICER, VERIFIER, auth_header
 
 
 def _plot(client, tokens, email=OFFICER, index=0):
     h = auth_header(tokens, email)
-    sid = client.get("/api/surveys", headers=h).json()["items"][0]["id"]  # latest survey
+    sid = latest_demo_survey_id(client, h)
     fc = client.get(f"/api/surveys/{sid}/plots", headers=h).json()
     return fc["features"][index]["properties"]
 

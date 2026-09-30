@@ -18,7 +18,7 @@ agriculture (Rehydria Technology Pvt. Ltd.).
 |---|---|---|
 | 1 | Foundation: compose, PostGIS schema + Alembic, JWT + RBAC, audit log, demo seed, app shell | **Done** |
 | 2 | GIS map dashboard: MapLibre map, layers, plot panel, cards, search, drill-down, sample NDVI COG | **Done** |
-| 3 | New survey + flight planner | Not started |
+| 3 | New survey + flight planner | **In progress**: survey CRUD, AOI wizard, pre-flight checklist + authorization done; planner / exports wait for `greenminds_core_modules` |
 | 4 | Telemetry + live mission | Not started |
 | 5 | Upload + processing | Not started |
 | 6 | Indices, plots, classification | Not started |
@@ -111,6 +111,8 @@ Operational values live in env vars (`.env.example`) and YAML under `config/`:
 | `config/cameras.yaml` | Survey camera profiles (MAPIR Survey3W/3N). **Defaults must be verified against the MAPIR datasheet and a bench test, including `band_map`.** |
 | `config/aircraft.yaml` | Aircraft speed / endurance / safety factor for the flight planner |
 | `config/thresholds.yaml` | Indicative NDVI health, damage, classification and plot thresholds |
+| `config/preflight.yaml` | Pre-flight checklist items (SPEC Section 9); `telemetry` marks items auto-filled from telemetry in Phase 4 |
+| `inputs/` | Your real field polygon (`.geojson` / `.kml`), offered as the default demo AOI in the New Survey wizard |
 | `config/map.yaml` | Crop order (fixes each crop's map colour), raster styles (rescale, colormap), initial view |
 
 Key environment variables:
@@ -125,6 +127,7 @@ Key environment variables:
 | `S3_IMAGE` | `rustfs/rustfs:latest` | S3 server image (MinIO images are no longer on Docker Hub) |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | local values | Object storage |
 | `TILE_SERVER_URL` | `/api/tiles` | COG tile service base (backend rio-tiler; or a TiTiler URL) |
+| `INPUTS_DIR` | `/inputs` (compose mounts `./inputs`) | Folder scanned for the default demo AOI |
 | `DATA_DIR` | `/data` (compose volume) | Local data such as the generated sample NDVI COGs |
 | `BASEMAP_TILES_URL`, `BASEMAP_ATTRIBUTION` | OpenStreetMap | XYZ basemap (use your own tile server in production) |
 | `SATELLITE_TILES_URL`, `SATELLITE_ATTRIBUTION` | empty (off) | Optional satellite context layer |

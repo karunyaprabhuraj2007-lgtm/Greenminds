@@ -1,0 +1,25 @@
+# Pre-flight checklist (SPEC Section 9). AUTHORIZE MISSION is enabled only when
+# every item is OK. `telemetry` names the live telemetry field that can auto-fill
+# the item (Phase 4); other items are manual confirmations by the operator.
+items:
+  - key: gnss_rtk_fix
+    label: "GNSS / RTK fix (RTK fixed = 6 preferred)"
+    telemetry: gps_fix_type
+  - key: battery
+    label: "Battery charged and voltage OK"
+    telemetry: battery_pct
+  - key: camera_sd
+    label: "Survey camera connected, SD card has space, trigger tested"
+  - key: home_position
+    label: "Home position set"
+    telemetry: home_set
+  - key: geofence
+    label: "Geofence enabled and covers the AOI"
+  - key: rtl
+    label: "RTL altitude and failsafe configured"
+  - key: weather
+    label: "Weather OK (wind, rain, visibility)"
+  - key: no_fly_zone
+    label: "Digital Sky: no-fly-zone check done / permission obtained"
+  - key: calibration_target
+    label: "MAPIR calibration target photographed"

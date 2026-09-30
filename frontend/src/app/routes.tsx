@@ -8,6 +8,9 @@ import { Login } from "../pages/Login";
 import { NotFound } from "../pages/NotFound";
 import { PhasePlaceholder } from "../pages/PhasePlaceholder";
 import { Settings } from "../pages/Settings";
+import { SurveyDetail } from "../pages/SurveyDetail";
+import { SurveyNew } from "../pages/SurveyNew";
+import { Surveys } from "../pages/Surveys";
 import { Users } from "../pages/Users";
 import { useAuth } from "./auth";
 import { NAV_ITEMS, homePath } from "./nav";
@@ -29,6 +32,8 @@ function RequireCapability({ capability, children }: { capability: string | null
 
 const PAGES: Record<string, ReactNode> = {
   "/map": <GisMap />,
+  "/surveys": <Surveys />,
+  "/surveys/new": <SurveyNew />,
   "/users": <Users />,
   "/audit-log": <AuditLog />,
   "/settings": <Settings />,
@@ -64,6 +69,14 @@ export function AppRoutes() {
             }
           />
         ))}
+        <Route
+          path="/surveys/:id"
+          element={
+            <RequireCapability capability="create_survey">
+              <SurveyDetail />
+            </RequireCapability>
+          }
+        />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

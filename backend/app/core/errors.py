@@ -31,8 +31,13 @@ def error_body(status: int, message: str, details: Any = None, code: str | None 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-        message = exc.detail if isinstance(exc.detail, str) else "Request failed"
-        details = None if isinstance(exc.detail, str) else exc.detail
+        if isinstance(exc.detail, str):
+            message, details = exc.detail, None
+        elif isinstance(exc.detail, dict) and "message" in exc.detail:
+            details = {k: v for k, v in exc.detail.items() if k != "message"}
+            message = str(exc.detail["message"])
+        else:
+            message, details = "Request failed", exc.detail
         return JSONResponse(
             error_body(exc.status_code, message, details),
             status_code=exc.status_code,

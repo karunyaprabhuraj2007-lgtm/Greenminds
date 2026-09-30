@@ -10,7 +10,8 @@ from typing import Any
 from geoalchemy2.elements import WKBElement, WKTElement
 from geoalchemy2.shape import from_shape, to_shape
 from pyproj import Geod
-from shapely.geometry import mapping, shape
+from shapely.geometry import MultiPolygon, Polygon, mapping, shape
+from shapely.geometry.polygon import orient
 from shapely.geometry.base import BaseGeometry
 
 SRID = 4326
@@ -39,7 +40,15 @@ def bbox(geom: WKBElement | WKTElement | None) -> list[float] | None:
 
 
 def geodesic_area_ha(geom: BaseGeometry) -> float:
-    """Area of a lon/lat geometry on the WGS84 ellipsoid, in hectares."""
+    """Area of a lon/lat (multi)polygon on the WGS84 ellipsoid, in hectares.
+
+    Rings are re-oriented first (exterior CCW, holes CW): pyproj sums signed
+    ring areas, so an un-oriented hole would be added instead of subtracted.
+    """
+    if isinstance(geom, MultiPolygon):
+        return sum(geodesic_area_ha(g) for g in geom.geoms)
+    if isinstance(geom, Polygon):
+        geom = orient(geom, sign=1.0)
     area_m2, _ = _GEOD.geometry_area_perimeter(geom)
     return abs(area_m2) / 10_000.0
 

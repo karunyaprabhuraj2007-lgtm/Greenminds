@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
 from app.db.models import Alert, District, Plot, PlotAIResult, Raster, Survey, User
-from app.seed.seed_demo import SURVEYS, seed
+from app.seed.seed_demo import DEMO_ALERTS, SURVEYS, seed
 
 SEEDED_NAMES = [name for name, *_ in SURVEYS]
 
@@ -23,7 +23,8 @@ def test_all_seeded_records_flagged_demo(db):
     ) == 0
     rasters = db.scalars(select(Raster).where(Raster.survey_id.in_(ids))).all()
     assert len(rasters) == 2 and all(r.is_demo and not r.calibrated for r in rasters)
-    alerts = db.scalars(select(Alert).where(Alert.survey_id.in_(ids))).all()
+    seeded_kinds = [kind for kind, *_ in DEMO_ALERTS]
+    alerts = db.scalars(select(Alert).where(Alert.survey_id.in_(ids), Alert.kind.in_(seeded_kinds))).all()
     assert alerts and all(a.is_demo for a in alerts)
     demo_users = db.scalars(select(User).where(User.email.like("%@greenminds.demo"))).all()
     assert len(demo_users) == 4 and all(u.is_demo for u in demo_users)

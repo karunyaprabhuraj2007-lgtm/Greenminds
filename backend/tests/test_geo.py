@@ -46,3 +46,20 @@ def test_geojson_roundtrip_and_bbox():
     assert to_geojson(elem)["type"] == "Polygon"
     assert bbox(elem) == pytest.approx([74.0, 18.0, 74.1, 18.1])
     assert to_geojson(None) is None and bbox(None) is None
+
+
+@pytest.mark.parametrize("hole_orientation", [1.0, -1.0])
+def test_area_subtracts_holes_whatever_their_orientation(hole_orientation):
+    from shapely.geometry.polygon import orient
+
+    outer = _square(74.52, 18.125, 200)  # 4 ha
+    hole = orient(_square(*offset_lonlat(74.52, 18.125, 50, 50), 100), sign=hole_orientation)  # 1 ha
+    poly = Polygon(outer.exterior.coords, [hole.exterior.coords])
+    assert geodesic_area_ha(poly) == pytest.approx(3.0, rel=1e-3)
+
+
+def test_multipolygon_area_is_sum():
+    from shapely.geometry import MultiPolygon
+
+    a, b = _square(74.52, 18.125, 100), _square(74.60, 18.2, 200)
+    assert geodesic_area_ha(MultiPolygon([a, b])) == pytest.approx(5.0, rel=1e-3)

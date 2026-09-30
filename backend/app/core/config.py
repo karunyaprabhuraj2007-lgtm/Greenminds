@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     aircraft_profile: str = "agroscan_quad"
 
     config_dir: Path = _REPO_CONFIG_DIR
+    # Folder with user-supplied inputs (e.g. the real field polygon used as the
+    # default demo AOI). Compose mounts ./inputs at /inputs read-only.
+    inputs_dir: Path = _REPO_ROOT / "inputs"
     # Local data directory (sample COGs etc.). Compose mounts a volume at /data.
     data_dir: Path = _REPO_ROOT / "data"
 
