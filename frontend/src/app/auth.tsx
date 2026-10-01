@@ -34,14 +34,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      throw new ApiError(0, "unreachable", "Cannot reach the GreenMinds server. Check that the backend is running.");
+    }
     const body = await res.json().catch(() => null);
     if (!res.ok) {
-      throw new ApiError(res.status, body?.error?.code ?? "error", body?.error?.message ?? "Login failed");
+      // No error envelope means the request never reached the API (proxy error, backend down).
+      const fallback = `Cannot reach the GreenMinds API (HTTP ${res.status}). Check that the backend container is running and healthy.`;
+      throw new ApiError(res.status, body?.error?.code ?? "unreachable", body?.error?.message ?? fallback);
     }
     saveTokens({ access_token: body.access_token, refresh_token: body.refresh_token });
     setUser(await get<Me>("/api/auth/me"));
